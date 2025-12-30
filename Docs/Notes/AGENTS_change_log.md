@@ -93,3 +93,12 @@
 - Diff: Docs\Notes\AGENTS_diff_20251229-044302.txt (Tools/diff.ps1 missing; used fc.exe)
 - Rollback: copy "C:\Users\arol_\.codex\backups\AGENTS-20251229-044302.md" AGENTS.md
 - Docs/AGENTS.md update: N/A (no Docs/AGENTS.md found)
+## 2025-12-29 19:38:11
+- Intended delta: Normalize AGENTS.md paths to repo-relative and simplify Codex config path.
+- Files: AGENTS.md
+- Checksum: C:\FoM_Decompilation\Docs\Notes\AGENTS_20251229-193811.sha256.txt
+- Backup: C:\Users\arol_\.codex\backups\AGENTS-20251229-193811.md
+- Notes copy: C:\FoM_Decompilation\Docs\Notes\AGENTS_20251229-193811.md
+- Diff: Docs\Notes\AGENTS_diff_20251229-193811.txt (Tools/diff.ps1 missing; used git diff)
+- Rollback: copy "C:\Users\arol_\.codex\backups\AGENTS-20251229-193811.md" AGENTS.md
+- Docs/AGENTS.md update: N/A (no Docs/AGENTS.md found)

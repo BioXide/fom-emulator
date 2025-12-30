@@ -825,15 +825,74 @@ export class PacketHandler {
     }
   }
 
+  private tryDecodeLoginFrameAtOffset(payload: Buffer, offset: number, connection: Connection, tag: string): void {
+    const emitLogin = (format: string, length: number, msgId: number, framePayload: Buffer): void => {
+      const hexSample = this.formatHex(framePayload, this.lithDebugHexBytes);
+      const hexFull = framePayload.toString('hex');
+      this.logLithDebug(
+        `[LoginFrame] ${connection.key} ${tag} off=${offset} fmt=${format} len=${length} msgId=0x${msgId.toString(16)} payload=${hexSample}`
+      );
+      this.logPacketNote(
+        `[LoginFrame] ${connection.key} ${tag} off=${offset} fmt=${format} len=${length} msgId=0x${msgId.toString(16)} payload=${hexFull}`
+      );
+      const loginBuffer = Buffer.concat([Buffer.from([msgId]), framePayload]);
+      this.tryParseLoginRequestRak(loginBuffer, connection, `${tag}:off=${offset}:${format}`, { dryRun: true });
+    };
+
+    if (offset + 3 <= payload.length) {
+      const len16 = payload.readUInt16LE(offset);
+      const msgId16 = payload[offset + 2];
+      const payloadStart = offset + 3;
+      const payloadEnd = payloadStart + len16;
+      if (len16 > 0 && payloadEnd <= payload.length) {
+        if (msgId16 === 0x6d) {
+          emitLogin('len16', len16, msgId16, payload.subarray(payloadStart, payloadEnd));
+        }
+      }
+    }
+
+    if (offset + 3 <= payload.length) {
+      const msgIdId16 = payload[offset];
+      const lenId16 = payload.readUInt16LE(offset + 1);
+      const payloadStart = offset + 3;
+      const payloadEnd = payloadStart + lenId16;
+      if (lenId16 > 0 && payloadEnd <= payload.length) {
+        if (msgIdId16 === 0x6d) {
+          emitLogin('id16', lenId16, msgIdId16, payload.subarray(payloadStart, payloadEnd));
+        }
+      }
+    }
+
+    if (offset + 5 <= payload.length) {
+      const len32 = payload.readUInt32LE(offset);
+      const msgId32 = payload[offset + 4];
+      const payloadStart = offset + 5;
+      const payloadEnd = payloadStart + len32;
+      if (len32 > 0 && payloadEnd <= payload.length) {
+        if (msgId32 === 0x6d) {
+          emitLogin('len32', len32, msgId32, payload.subarray(payloadStart, payloadEnd));
+        }
+      }
+    }
+  }
+
   private scanNestedFrames(payload: Buffer, connection: Connection, tag: string): void {
-    // Look for 0x6c/0x6d inside payload and attempt nested decode from that offset.
+    // Look for 0x6c/0x6d inside payload and attempt nested decode from nearby offsets.
     const targets = [0x6c, 0x6d];
     for (let i = 0; i < payload.length; i += 1) {
       if (!targets.includes(payload[i])) continue;
       const start = Math.max(0, i - 8);
       const end = Math.min(payload.length, i + 24);
       const window = payload.subarray(start, end);
+      const hitTag = `${tag}:hit@${i}`;
       this.logLithDebug(`[NestedScan] ${connection.key} ${tag} hit=0x${payload[i].toString(16)} @${i} window=${window.toString('hex')}`);
+
+      // Attempt shifted frame decoding around hit (i-2..i+2).
+      for (let delta = -2; delta <= 2; delta += 1) {
+        const offset = i + delta;
+        if (offset < 0 || offset >= payload.length) continue;
+        this.tryDecodeLoginFrameAtOffset(payload, offset, connection, hitTag);
+      }
 
       // Try nested decodes starting at this offset
       const slice = payload.subarray(i);
@@ -1174,8 +1233,14 @@ export class PacketHandler {
     PacketLogger.globalNote(message);
   }
 
-  private tryParseLoginRequestRak(buffer: Buffer, connection: Connection, source: string): Buffer | null {
+  private tryParseLoginRequestRak(
+    buffer: Buffer,
+    connection: Connection,
+    source: string,
+    options?: { dryRun?: boolean }
+  ): Buffer | null {
     if (buffer.length < 2) return null;
+    const dryRun = options?.dryRun === true;
 
     this.logPacketNote(`[LoginParse] ${connection.key} src=${source} len=${buffer.length} bits=${buffer.length * 8}`);
     if (this.loginDebug || this.verbose) {
@@ -1217,6 +1282,11 @@ export class PacketHandler {
       if (this.loginDebug) {
         this.logPacketNote(`[LoginParse] parsed src=${source} password="${password}"`);
       }
+      if (dryRun) {
+        this.logPacketNote(`[LoginParse] dryRun=1 src=${source} user="${username}" passLen=${password.length}`);
+        return null;
+      }
+
       connection.username = username;
       connection.authenticated = true;
 

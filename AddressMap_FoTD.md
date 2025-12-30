@@ -83,6 +83,43 @@ Notes:
 | 0x10038B10 | 0x00038B10 | CGameClientShell_OnMessage | Vtable slot +0x58; main message dispatcher (switch on msg id) | vtable +0x58 + decomp | high |
 | 0x10037E70 | 0x00037E70 | CGameClientShell_OnMessage2 | Vtable slot +0x64; secondary message handler | vtable +0x64 + decomp | med |
 
+### Code (login request / Packet_Id107 build)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x101C1072 | 0x001C1072 | Login_OnSubmit | Login UI submit handler; reads user/pass fields and queues updates | decomp (user) | high |
+| 0x10008110 | 0x00008110 | Ui_ReadFieldTextById | Reads UI field text by ID into buffer (lpBaseAddress + 4*id) | decomp (user) | med |
+| 0x10108F70 | 0x00108F70 | LoginField_QueueUpdate | Stores field ids/values into login window object + triggers apply/send | decomp (user) | med |
+| 0x101055C0 | 0x001055C0 | LoginField_ApplyString | Resolves string via engine interface; sets UI text + flags | decomp (user) | med |
+| 0x10077540 | 0x00077540 | UiText_SetValueIfChanged | Copies new string, triggers validation/callbacks | decomp (user) | low |
+| 0x101C04B0 | 0x001C04B0 | Login_SendRequest_Throttled | Builds Packet_Id107 and calls LTClient_SendPacket_BuildIfNeeded | decomp (user) | med |
+| 0x1000C7E0 | 0x0000C7E0 | Packet_Id107_Init | Initializes packet object; sets msg id byte = 107 | decomp (user) | med |
+| 0x1000C770 | 0x0000C770 | Packet_WriteHeader | Initializes bitstream; writes optional header byte 0x19 + 64-bit token; writes msg id byte | decomp (user) | med |
+| 0x1000D9D0 | 0x0000D9D0 | Packet_Id107_Serialize | Builds bitstream; writes flags + optional ints + 2x2048-bit blocks | decomp (user) | med |
+| 0x1000D8B0 | 0x0000D8B0 | Packet_Id107_Read | Reads bitstream; mirrors serialize + 2x2048-bit blocks | decomp (user) | med |
+| 0x1000D650 | 0x0000D650 | Playerfile_BlockC0_WriteEntry | Writes one entry in Playerfile blockC0 (bitflag + u16c + 5x u8c + bitfields) | decomp (user) | low |
+| 0x1000CBF0 | 0x0000CBF0 | BitStream_WriteU16C | Writes u16 compressed to bitstream | inferred from usage | low |
+| 0x1000CB60 | 0x0000CB60 | Packet_Id107_Vtbl0 | Vtable slot +0x00 (unknown role) | vtable xref | low |
+| 0x100065D9 | 0x000065D9 | Registry_SetUsernameValue | Writes registry value "username" (persistence) | decomp (user) | low |
+| 0x1008A0C0 | 0x0008A0C0 | LoginToken_Process | Reads LoginToken + passes to engine (pre-login flow) | decomp (user) | low |
+| 0x102A64A0 | 0x002A64A0 | Ensure_BitstreamTables_Init | Wrapper; calls Init_BitstreamTables once | xrefs | low |
+| 0x10272AD0 | 0x00272AD0 | Init_BitstreamTables | Initializes large bit/lookup tables (0x102FE000+) | disasm (user) | low |
+
+#### Packet_Id107 bitstream construction (observed)
+- Packet_Id107_Serialize writes a series of presence bits for 4 optional fields: +1076, +1080, +1084, +1088; if present it writes the value (u32 for last two; compressed for first two).
+- Two fixed 2048-bit blocks are appended from packet offsets +1216 and +1344 via g_LTClient vtbl+0x34 (size=2048 bits).
+- If word at +1072 == 325, an extra block is emitted via sub_1000D800(this+1092, this+12).
+- Packet_Id107_Read mirrors the serialize path: reads u16c into +1072, then 4 presence bits + fields, then reads two 2048-bit blocks via g_LTClient vtbl+0x38.
+- If +1072 == 325, Packet_Id107_Read calls Playerfile_read_blockC0(this+1092, this+12).
+- Packet_WriteHeader is called before serialize: it resets/initializes the bitstream, optionally writes header byte 0x19 plus a 64-bit token (Packet_GetHeaderTokenU64 via BitStream_WriteU64) when *(this+8)==0x19, then writes msg id byte from *(this+1064).
+- Playerfile_BlockC0_WriteEntry layout (called 10x by sub_1000D800): if *(this+4)==0 or *(this+5)==0 => write bit0. Else write bit1, then u16c, then u8c for bytes +2/+3/+8/+9/+10, plus raw bitfields from +4 (7 bits), +5 (7 bits), +6 (9 bits).
+
+### Data (login packet globals)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x102BFDA8 | 0x002BFDA8 | vtbl_Packet_Id107 | Vtable for Packet_Id107_* funcs | vtable xref | low |
+| 0x102BFD98 | 0x002BFD98 | vtbl_Packet_Unknown0 | Prior vtable used during Packet_Id107_Init | decomp (user) | low |
+| 0x1035AA4C | 0x0035AA4C | g_LTClient | LTClient interface used for packet serialization/send | xrefs | low |
+
 ### Code (items/inventory + handlers)
 | VA | RVA | Symbol | Purpose | Evidence | Conf |
 |---|---|---|---|---|---|
@@ -1913,6 +1950,7 @@ Dynamic loader wrappers:
 | 0x1003DFF0 | 0x0003DFF0 | ObjDB_FindEntryByName | Thin wrapper (calls ObjDB_FindOrAddEntry) | decomp + call graph | med |
 | 0x10018C60 | 0x00018C60 | FormatSystemError | FormatMessage/LoadString wrapper | import calls | med |
 | 0x10003830 | 0x00003830 | FormatString_vsnprintf | vsnprintf wrapper | import call | high |
+| 0x1003A520 | 0x0003A520 | sm_CacheFile | Caches file into ObjDB; ILTServer::CacheFile paths | decomp + "sm_CacheFile"/"ILTServer::CacheFile" strings | high |
 
 ### Physics/Collision API holders (server-side interfaces)
 | VA | RVA | Symbol | Purpose | Evidence | Conf |
@@ -1928,3 +1966,218 @@ Dynamic loader wrappers:
 | 0x100B0D98 | 0x000B0D98 | g_pILTCollisionMgr | CollisionMgr API pointer | init stub arg | low |
 | 0x1002F9C0 | 0x0002F9C0 | Get_ILTPhysics_A | Getter stub (mov eax, g_pILTPhysics_A; ret) | bytes | low |
 
+### ILTPhysics API methods (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1002FC30 | 0x0002FC30 | ILTPhysics_GetPing | Returns client ping via client conn vtbl | decomp + "ILTPhysics::GetPing" string | high |
+| 0x1002FFE0 | 0x0002FFE0 | ILTPhysics_GetWorldBox | Fetches world bounds via physics mgr vtbl | decomp + "ILTPhysics::GetWorldBox" string | high |
+| 0x10030050 | 0x00030050 | ILTPhysics_OpenFile | ObjDB lookup by name; returns entry handle | decomp + "ILTPhysics::OpenFile" string | high |
+| 0x10030A50 | 0x00030A50 | ILTPhysics_GetStaticObject | Returns static object pointer from object | decomp + "ILTPhysics::GetStaticObject" string | high |
+| 0x10030AE0 | 0x00030AE0 | ILTPhysics_GetObjectClass | Returns object class via server class table | decomp + "ILTPhysics::GetObjectClass" string | high |
+| 0x10031270 | 0x00031270 | ILTPhysics_AddObjectToSky | Adds object to sky list | decomp + "ILTPhysics::AddObjectToSky" string | high |
+| 0x10031350 | 0x00031350 | ILTPhysics_RemoveObjectFromSky | Removes object from sky list | decomp + "ILTPhysics::RemoveObjectFromSky" string | high |
+| 0x100313F0 | 0x000313F0 | ILTPhysics_AttachClient | Attach client to object | decomp + "ILTPhysics::AttachClient" string | high |
+| 0x10031450 | 0x00031450 | ILTPhysics_DetachClient | Detach client from object | decomp + "ILTPhysics::DetachClient" string | high |
+| 0x100318D0 | 0x000318D0 | ILTPhysics_CreateInterObjectLink | Create inter-object link | decomp + "ILTPhysics::CreateInterObjectLink" string | high |
+| 0x10031930 | 0x00031930 | ILTPhysics_RemoveAttachment | Remove attachment from object | decomp + "ILTPhysics::RemoveAttachment" string | high |
+| 0x10031A50 | 0x00031A50 | ILTPhysics_FindAttachment | Find attachment by name | decomp + "ILTPhysics::FindAttachment" string | high |
+| 0x10031C80 | 0x00031C80 | ILTPhysics_SetObjectUserFlags | Sets object user flags | decomp + "ILTPhysics::SetObjectUserFlags" string | high |
+| 0x10031E30 | 0x00031E30 | ILTPhysics_GetObjectScale | Returns object scale | decomp + "ILTPhysics::GetObjectScale" string | high |
+| 0x10031F20 | 0x00031F20 | ILTPhysics_TeleportObject | Teleport object (calls internal mover) | decomp + "ILTPhysics::TeleportObject" string | high |
+| 0x100321E0 | 0x000321E0 | ILTPhysics_SaveObjects | Save objects to file | decomp + "ILTPhysics::SaveObjects" string | high |
+| 0x10032260 | 0x00032260 | ILTPhysics_RestoreObjects | Restore objects from file | decomp + "ILTPhysics::RestoreObjects" string | high |
+| 0x10032350 | 0x00032350 | ILTPhysics_GetSessionName | Returns session name string | decomp + "ILTPhysics::GetSessionName" string | high |
+| 0x100323B0 | 0x000323B0 | ILTPhysics_GetTcpIpAddress | Returns server IP string | decomp + "ILTPhysics::GetTcpIpAddress" string | high |
+| 0x10033B60 | 0x00033B60 | ILTPhysics_CreateAttachment | Create attachment | decomp + "ILTPhysics::CreateAttachment" string | high |
+| 0x10033CE0 | 0x00033CE0 | ILTPhysics_GetLastCollision | Returns last collision data | decomp + "ILTPhysics::GetLastCollision" string | high |
+| 0x10033DB0 | 0x00033DB0 | ILTPhysics_SetObjectRotation | Set object rotation | decomp + "ILTPhysics::SetObjectRotation" string | high |
+| 0x10034060 | 0x00034060 | ILTPhysics_SetObjectRotation2 | Set object rotation (variant) | decomp + "ILTPhysics::SetObjectRotation2" string | high |
+| 0x100342D0 | 0x000342D0 | ILTPhysics_FindWorldModelObjectIntersections | World-model intersection query | decomp + "ILTPhysics::FindWorldModelObjectIntersections" string | high |
+| 0x10035490 | 0x00035490 | ILTPhysics_ThreadLoadFile | Threaded file load | decomp + "ILTPhysics::ThreadLoadFile" string | high |
+| 0x10035560 | 0x00035560 | ILTPhysics_UnloadFile | Unload file | decomp + "ILTPhysics::UnloadFile" string | high |
+| 0x10066B80 | 0x00066B80 | ILTPhysics_GetForceIgnoreLimit | Returns sqrt(forceIgnoreSq) | decomp + "ILTPhysics::GetForceIgnoreLimit" string | high |
+| 0x10066BE0 | 0x00066BE0 | ILTPhysics_SetForceIgnoreLimit | Stores forceIgnoreSq | decomp + "ILTPhysics::SetForceIgnoreLimit" string | high |
+| 0x10066CB0 | 0x00066CB0 | ILTPhysics_GetObjectDims | Returns object dims | decomp + "ILTPhysics::GetObjectDims" string | high |
+| 0x10066D90 | 0x00066D90 | ILTPhysics_GetStandingOn | Returns standing object + position | decomp + "ILTPhysics::GetStandingOn" string | high |
+
+### ILTServer/CLTServer API methods (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1002FC30 | 0x0002FC30 | ILTServer_GetClientPing | Fetch client ping | decomp + "ILTServer::GetClientPing" string | high |
+| 0x1002FCD0 | 0x0002FCD0 | ILTServer_GetClientAddr | Fetch client IP/port into buffers | decomp + "ILTServer::GetClientAddr" string | high |
+| 0x1002FF00 | 0x0002FF00 | CLTServer_GetHPolyObject | Resolve HPoly to object | decomp + "CLTServer::GetHPolyObject" string | med |
+| 0x10033590 | 0x00033590 | CLTServer_FindObjectsByNameAndClass | Finds objects by name+class into list | decomp + "CLTServer::FindObjectsByNameAndClass" string | high |
+| 0x100337C0 | 0x000337C0 | CLTServer_SetObjectSFXMessage | Sends SFX message to object | decomp + "CLTServer::SetObjectSFXMessage" string | high |
+| 0x10034CD0 | 0x00034CD0 | CLTServer_SendSFXMessage | Sends SFX message | decomp + "CLTServer::SendSFXMessage" string | high |
+| 0x10031760 | 0x00031760 | ILTServer_KickClient | Marks client for kick | decomp + "ILTServer::KickClient" string | high |
+| 0x100317F0 | 0x000317F0 | ILTServer_SetClientViewPos | Sets client view position | decomp + "SetClientViewPos" string | med |
+| 0x1002FE30 | 0x0002FE30 | GetNetFlags | Reads net flags from object | decomp + "GetNetFlags" string | med |
+| 0x1002FE90 | 0x0002FE90 | SetNetFlags | Writes net flags to object | decomp + "SetNetFlags" string | med |
+| 0x10063740 | 0x00063740 | ILTServer_RemoveAttachment | Removes attachment by name/id from object | disasm + "ILTServer::RemoveAttachment" string | high |
+| 0x100336E0 | 0x000336E0 | ILTServer_SendToObject | Sends packet stream to object | decomp + "ILTServer::SendToObject" string | high |
+| 0x10033890 | 0x00033890 | ILTServer_SendToServer | Sends packet stream to server | decomp + "ILTServer::SendToServer" string | high |
+
+### Server data / object manager helpers (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1003AB80 | 0x0003AB80 | sm_CreateServerData | Alloc/init server data struct; insert into list | decomp + "sm_CreateServerData" string | high |
+| 0x1003B400 | 0x0003B400 | sm_CreateNewID | Alloc new object ID entry | decomp + "sm_CreateNewID" string | high |
+| 0x1003B5E0 | 0x0003B5E0 | sm_AllocateID | Alloc/reuse object ID entry | decomp + "sm_AllocateID" string | high |
+| 0x1003B8D0 | 0x0003B8D0 | sm_AddObjectToWorld | Creates object + server data + registers | decomp + "sm_AddObjectToWorld" string | high |
+| 0x1003A760 | 0x0003A760 | sm_RemoveObjectFromWorld | Removes object + frees server data | decomp + "sm_RemoveObjectFromWorld" string | high |
+| 0x10043E90 | 0x00043E90 | sm_AttachClient | Attach client to object + notify | decomp + "sm_AttachClient" string | high |
+| 0x10063570 | 0x00063570 | om_CreateObject | Alloc/init object by type | decomp + "om_CreateObject" string | high |
+
+### Object save/restore
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1002E0B0 | 0x0002E0B0 | sm_SaveObjects | Serializes object list to stream (version 2002) | decomp + caller ILTPhysics_SaveObjects | med |
+| 0x1002E3D0 | 0x0002E3D0 | sm_RestoreObjects | Restores objects from stream (validates version) | decomp + "sm_RestoreObjects" string | high |
+| 0x1002D0B0 | 0x0002D0B0 | sm_CreateNextObject | Create/serialize next object (save path) | string xref "sm_CreateNextObject" | med |
+| 0x1002DD30 | 0x0002DD30 | sm_RestoreNextObject | Restore next object (load path) | string xref "sm_RestoreNextObject" | med |
+
+### Server manager / world lifecycle (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x10036700 | 0x00036700 | CServerMgr_LoadWorld | Loads world via world mgr; sets running flag | decomp + "CServerMgr::LoadWorld" string | high |
+| 0x1003C6F0 | 0x0003C6F0 | CServerMgr_DoStartWorld | Start world (load dat, init, optional run) | decomp + "CServerMgr::DoStartWorld" string | high |
+| 0x10039570 | 0x00039570 | CServerMgr_DoRunWorld | Starts world sim; runs cleanup + timing | decomp + "CServerMgr::DoRunWorld" string | high |
+
+### World model init (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1003D240 | 0x0003D240 | se_InitWorldModel | Initializes world model + physics bounds | decomp + "se_InitWorldModel" string | high |
+
+### Object load (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x10049FC0 | 0x00049FC0 | LoadObjects | Loads object list from world data | decomp + "LoadObjects" string | high |
+
+### Logging / debug
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100175A0 | 0x000175A0 | Debug_Printf | Formats + OutputDebugStringA | decomp + OutputDebugStringA | med |
+| 0x10018F50 | 0x00018F50 | ServerLog_Printf | Formats + forwards to server log interface (g_pServerInstance+0x85C) | decomp | med |
+| 0x10035A90 | 0x00035A90 | ServerLog_UnfreedString | Logs unfreed server string | decomp + "Unfreed (server) string: %s" string | low |
+
+### Server connections
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x10009E60 | 0x00009E60 | Server_NewConnectionNotify | Handles new connection notify; dispatches to hooks | decomp + "NewConnectionNotify" string | med |
+
+### Server networking / packet IO
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x10008180 | 0x00008180 | NetMgr_SendPacketToConnection | Sends packet to connection; logs at debug >=5 | decomp + "Sent packet to connection %p (packet ID %d, length %d)." string | med |
+| 0x100082C0 | 0x000082C0 | NetMgr_ProcessIncomingPacket | Applies drop rate + logs recv/drop | decomp + "Got packet from %p..." + "Dropping packet" strings | med |
+| 0x100086C0 | 0x000086C0 | NetMgr_UpdateConnections | Ticks connections; sends queued packets; logs conn stats | decomp + "Conn %d Info - Ping" strings | med |
+| 0x10009770 | 0x00009770 | NetMgr_SendOrQueuePacket | Sends immediately or queues based on send interval | decomp + NetMgr_SendPacketToConnection call | med |
+| 0x100094C0 | 0x000094C0 | NetMgr_AllocQueuedPacket | Alloc/initialize queued packet node from pool | decomp + pool pop + BitStream init | low |
+| 0x10006D20 | 0x00006D20 | NetMgr_LogPrintf | Net debug logging with rate/flag gating | decomp + _vsnprintf + ServerLog_Printf | med |
+| 0x10006A10 | 0x00006A10 | NetMgr_QueueInsert | Inserts packet into send queue (dlist) | decomp + list pointer patch + count++ | low |
+| 0x100163C0 | 0x000163C0 | CUDPDriver_JoinSession | UDP connect handshake; sends conn request; waits for accept | decomp + "CUDPDriver::JoinSession" + "UDP: Connection to %d.%d.%d.%d:%d accepted" strings | med |
+| 0x10016140 | 0x00016140 | CUDPDriver_ResetState | Resets join state; clears buffers; optional WSACleanup | decomp + WSACleanup | med |
+| 0x100160F0 | 0x000160F0 | CUDPDriver_ClearConnections | Clears connection list; destructs each | decomp + NetConn_dtor + Mem_Free | low |
+| 0x1000CB60 | 0x0000CB60 | CUDPDriver_ConnListNext | Iterates connection list; returns next | decomp + list cursor advance | low |
+| 0x1000BD30 | 0x0000BD30 | CUDPDriver_CloseSocket | Closes UDP socket + resets internal interfaces | decomp + closesocket | low |
+| 0x1000E470 | 0x0000E470 | CUDPDriver_AddConnection | Inserts accepted connection into list | decomp + list insert + count++ | low |
+| 0x10015160 | 0x00015160 | NetConn_ctor | Initializes net connection object + stats | decomp + vtable + InitializeCriticalSection | low |
+| 0x10015380 | 0x00015380 | NetConn_dtor | Tears down net connection object | decomp + DeleteCriticalSection + frees | low |
+| 0x10008080 | 0x00008080 | NetConn_Close | Closes connection; logs "Conn %p closing" | decomp + "Conn %p closing" string | low |
+| 0x100079B0 | 0x000079B0 | NetConn_ClearPacketTree | Clears packet tree; releases packet refs | decomp + BitStream_ReleasePacket | low |
+| 0x10010060 | 0x00010060 | NetConn_ResetCounters | Resets/accumulates counter buckets | decomp + counter sum loop | low |
+| 0x100141A0 | 0x000141A0 | NetConn_ClearReassemblyList | Frees reassembly list + sublists | decomp + Mem_Free + NetConn_ClearPacketList | low |
+| 0x1000EE20 | 0x0000EE20 | NetConn_ClearPacketList | Frees packet list; releases BitStream packets | decomp + BitStream_ReleasePacket | low |
+| 0x1000B1F0 | 0x0000B1F0 | NetConn_UpdatePingAverage | Updates ping ring + logs | decomp + "UDP: Ping update" string | low |
+| 0x1000B2C0 | 0x0000B2C0 | NetConn_WriteHeartbeat | Builds heartbeat payload + ACK bits | decomp + "UDP: Sending heartbeat" string | low |
+| 0x1000FA70 | 0x0000FA70 | NetConn_SaveOutOfOrderPacket | Stores out-of-order packet snapshot | decomp + "UDP: Saving out of order packet" string | low |
+| 0x10014440 | 0x00014440 | NetConn_SendGuaranteed | Builds/sends guaranteed packets | decomp + "UDP: Sent Guaranteed" string | low |
+| 0x10012FC0 | 0x00012FC0 | NetConn_HandleGuaranteedPacket | Handles guaranteed packet receive/reassembly | decomp + "UDP: Received guaranteed packet" string | low |
+| 0x10013540 | 0x00013540 | NetConn_HandleUnguaranteedPacket | Handles unguaranteed packet receive | decomp + "Short un-guaranteed message received!" string | low |
+| 0x10011550 | 0x00011550 | NetConn_EnqueueSentPacket | Allocates + enqueues sent packet node | decomp + Mem_Alloc + BitStream_InitFromPacketWindow | low |
+| 0x10013EF0 | 0x00013EF0 | NetConn_QueueNodeFromFreeList | Pops free node, copies payload, appends | decomp + qmemcpy + list append | low |
+| 0x10012870 | 0x00012870 | NetConn_QueueNodeAlloc | Allocates new queue node | decomp + Mem_Alloc(36) | low |
+| 0x100120B0 | 0x000120B0 | NetConn_QueueNodeReuse | Reuses free node for queue append | decomp + BitStream_Copy + list append | low |
+| 0x1000DBC0 | 0x0000DBC0 | NetConn_SplicePacketList | Splices packet list into another | decomp + list pointer swap | low |
+| 0x1000FB10 | 0x0000FB10 | NetConn_SendUnguaranteed | Builds/sends unguaranteed packets | decomp + "UDP: Sending unguaranteed" string | low |
+| 0x1000D7D0 | 0x0000D7D0 | NetConn_FlowControlBlocked | Flow control gate (logs when blocked) | decomp + "UDP: Flow control blocked" string | low |
+| 0x1000F4E0 | 0x0000F4E0 | NetConn_MovePacketNode | Moves packet node between lists | decomp + list splice + BitStream_Copy | low |
+| 0x1000B1A0 | 0x0000B1A0 | NetConn_CalcPacketBytes | Computes packet byte size incl overhead | decomp + size formula | low |
+| 0x1000B060 | 0x0000B060 | NetConn_CalcVarIntBits | Computes bit size for var-int header | decomp + shift loop | low |
+| 0x10019880 | 0x00019880 | CUDPDriver_Lock | EnterCriticalSection on driver lock | decomp + EnterCriticalSection | low |
+| 0x10019890 | 0x00019890 | CUDPDriver_Unlock | LeaveCriticalSection on driver lock | decomp + LeaveCriticalSection | low |
+| 0x100100C0 | 0x000100C0 | UDP_RecvFrom_BitStream | recvfrom + build bitstream; logs recvfrom errors | decomp + "UDP: recvfrom returned error %d" string | med |
+| 0x10010260 | 0x00010260 | UDP_SendTo_BitStream | sendto for bitstream; optional corruption test | decomp + sendto | low |
+
+### Server networking / bitstream helpers
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1000A7B0 | 0x0000A7B0 | BitStream_WriteBits | Writes up to 32 bits into stream | decomp + bitmask + word flush | med |
+| 0x1000A420 | 0x0000A420 | BitStream_ReadBits | Reads up to 32 bits from stream | decomp + bitmask + cache update | med |
+| 0x10007FE0 | 0x00007FE0 | BitStream_ReadU8 | Reads 8 bits (u8) from stream | decomp + BitStream_ReadBits(8) | med |
+| 0x1000A940 | 0x0000A940 | BitStream_CRC32 | CRC32 over stream bytes | decomp + CRC table loop | low |
+| 0x1000B1C0 | 0x0000B1C0 | BitStream_Checksum8 | XOR-folds CRC32 to 8-bit checksum | decomp + CRC32 + byte xor | low |
+| 0x1000AC00 | 0x0000AC00 | BitStream_IsEmpty | Returns true if stream has zero bits | decomp + size check | low |
+| 0x10005B10 | 0x00005B10 | BitStream_InitFromWriter | Finalizes writer state into readable stream | decomp + BitWriter_AppendWord + BitStream_UpdateCache | low |
+| 0x10005C90 | 0x00005C90 | BitStream_Copy | Copies stream state + refcount | decomp + refcount + UpdateCache | low |
+| 0x10005C00 | 0x00005C00 | BitStream_InitEmpty | Initializes empty stream | decomp + BitStream_InitFromWriter(empty) | low |
+| 0x10005A10 | 0x00005A10 | BitStream_UpdateCache | Recomputes current dword cache from bit offset | decomp + BitStream_AdvanceToBitOffset | low |
+| 0x10007450 | 0x00007450 | BitStream_InitFromPacketWindow | Initializes stream window from packet + offsets | decomp + InterlockedIncrement + UpdateCache | low |
+| 0x10005340 | 0x00005340 | BitStream_AdvanceToBitOffset | Advances chunk pointer to target bit offset | decomp + chunk walk (0xFC/248 stride) | low |
+| 0x1000AA20 | 0x0000AA20 | BitStream_AppendToWriter | Appends one stream into another | decomp + ReadBits/WriteBits loop | low |
+| 0x1000A5A0 | 0x0000A5A0 | BitStream_SerializeToBuffer | Copies stream into flat buffer for send | decomp + chunk memcpy loop | low |
+| 0x1000A910 | 0x0000A910 | BitStream_WriteBytes | Writes raw bytes into bitstream writer | decomp + alloc + BitWriter_WriteBytes | low |
+| 0x1000A6F0 | 0x0000A6F0 | BitWriter_WriteBytes | Writes bytes into chunked buffer (0xF8 blocks) | decomp + memcpy + chunk alloc | low |
+| 0x10005940 | 0x00005940 | BitWriter_AppendWord | Appends 32-bit word to chunk list | decomp + chunk fill + alloc | low |
+| 0x1000B090 | 0x0000B090 | BitStream_WriteVarInt | Writes variable-length int header | decomp + bit writes | low |
+| 0x1000B130 | 0x0000B130 | BitStream_ReadVarInt | Reads variable-length int header | decomp + bit reads | low |
+| 0x1000ABE0 | 0x0000ABE0 | BitStream_GetBitLength | Returns bit length of stream | decomp + header size + bits | low |
+| 0x1000F2C0 | 0x0000F2C0 | BitStream_Slice | Builds bitstream window from another | decomp + InitFromPacketWindow | low |
+| 0x1000A370 | 0x0000A370 | BitStream_AllocPacket | Alloc small packet header from pool | decomp + pool alloc (16 bytes) | low |
+| 0x1000A2B0 | 0x0000A2B0 | BitStream_AllocBlock | Alloc 0x104-byte data block from pool | decomp + pool alloc (260 bytes) | low |
+| 0x1000A100 | 0x0000A100 | BitStream_ReleasePacket | Releases packet + blocks to pool | decomp + pool return | low |
+| 0x1000A0B0 | 0x0000A0B0 | BitStream_FreeBlock | Returns data block to pool | decomp + pool free | low |
+| 0x1000A880 | 0x0000A880 | BitStream_WriteBitsFromBuffer | Writes N bits from buffer | decomp + BitStream_WriteBits loop | low |
+| 0x10005460 | 0x00005460 | BitStream_Release | Decrements packet refcount | decomp + InterlockedDecrement | low |
+| 0x10005260 | 0x00005260 | Mem_Alloc | Heap alloc wrapper | decomp + call thunk | low |
+| 0x10005270 | 0x00005270 | Mem_Free | Heap free wrapper | decomp + call thunk | low |
+| 0x10066290 | 0x00066290 | NetStats_AddSampleTime | Accumulates time; triggers average recompute | decomp + threshold + NetStats_ComputeAverage | low |
+| 0x10066260 | 0x00066260 | NetStats_ComputeAverage | Computes average rate over time window | decomp + value/time scaling | low |
+| 0x10066230 | 0x00066230 | NetStats_Init | Initializes stat window values | decomp + constants (0.0001, 2.0) | low |
+| 0x100074E0 | 0x000074E0 | NetStats_ctor | Initializes net stats struct | decomp + NetStats_Init calls | low |
+| 0x1000F600 | 0x0000F600 | NetQueuedPacket_ctor | Initializes queued packet node | decomp + BitStream_InitEmpty | low |
+| 0x1000B040 | 0x0000B040 | NetQueuedPacket_dtor | Releases queued packet node | decomp + BitStream_ReleasePacket | low |
+
+### Server update / frame
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100390D0 | 0x000390D0 | Server_FrameUpdate | Per-frame/server tick update loop | decomp + "Game time: %.2f" + FindObjectsTouchingSphere tick/count logs | med |
+
+### Sound / audio (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100389E0 | 0x000389E0 | ServerSound_Cleanup | Frees server sound instances; logs unfreed sound files | decomp + "Unfreed sound file (server) %s" string | med |
+
+### Model/rez (string-verified)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x10063EF0 | 0x00063EF0 | ModelInstance_Unbind | Unbinds model instance; decref model rez; frees when last | disasm + "model-rez: model-instance(%s) unbind %s" string | med |
+| 0x10065A30 | 0x00065A30 | ModelInstance_Bind | Binds model instance; increments ref | disasm + "model-rez: model-instance(%s) bind %s" string | med |
+| 0x10063150 | 0x00063150 | ModelInstance_CountChildModels | Counts child model list on instance | decomp + list traversal | low |
+| 0x10063170 | 0x00063170 | ModelInstance_FreeArrays | Frees model instance arrays (+0x5D0/+0x5D4/+0x5D8) | decomp + delete[] | low |
+| 0x100631C0 | 0x000631C0 | ModelInstance_FreeBucketLists | Frees model instance bucket lists (+0x5E0) | decomp + delete[] | low |
+| 0x10046880 | 0x00046880 | sm_WriteModelFiles | Writes model file refs/attachments to stream | decomp + "sm_WriteModelFiles" string | med |
+| 0x100469E0 | 0x000469E0 | sm_WriteChangedModelFiles | Writes only changed model file refs | decomp + "sm_WriteChangedModelFiles" string | med |
+| 0x10039E10 | 0x00039E10 | ModelRez_CacheModelFile | Loads/caches model file into server model-rez | decomp + "model-rez: server cachemodelfile %s" string | med |
+| 0x10035DF0 | 0x00035DF0 | CServerMgr_LoadModel | Loads model file via ObjDB + model rez | decomp + "model-rez: server loadmodel" string | med |
+| 0x10039BD0 | 0x00039BD0 | ModelRez_SendLoadRequest | Sends model load/cache-load request | decomp + "model-rez: send load req" string | med |
+| 0x10039EC0 | 0x00039EC0 | ModelRez_ServerUncacheModelFile | Uncaches server model file entry; decref + release | decomp + "model-rez: server uncachemodelfile %s" string | med |
+| 0x10039F30 | 0x00039F30 | ModelRez_SendPreloadRequest | Sends preload request for model file id | decomp + "model-rez: send preload req fileid(%d) %s" string | med |
+| 0x100361F0 | 0x000361F0 | ModelRez_ServerUncacheModel | Uncaches server model + dec ref | decomp + "model-rez: server uncache" string | med |
+| 0x10025C60 | 0x00025C60 | ModelRez_ClientUncacheModel | Uncaches client model + dec ref | decomp + "model-rez: client uncachemodel" string | med |
+| 0x100259F0 | 0x000259F0 | ModelRez_ModelRelease | Releases model resources | decomp + "model-rez: model release" string | med |
+| 0x10025420 | 0x00025420 | ModelRez_ModelCtor | Model rez node constructor | decomp + "model-rez: model constr" string | med |
+| 0x10025B40 | 0x00025B40 | ModelRez_ModelDtor | Model rez node destructor (optional free) | decomp + ModelRez_ModelRelease call | low |
+| 0x10025B70 | 0x00025B70 | ModelRez_ModelDecRef | Decrements model rez refcount; frees at zero | decomp + ModelRez_ModelRelease call | low |
+| 0x100251C0 | 0x000251C0 | ModelRez_LogUnfreedModelsAndClear | Logs unfreed models and clears model tree | decomp + "model-rez: unfreed model" string | med |
+| 0x10063080 | 0x00063080 | ModelRez_AddChildModel | Adds child model; logs warnings on mismatch | decomp + "model-rez: add-childmodel" string | med |

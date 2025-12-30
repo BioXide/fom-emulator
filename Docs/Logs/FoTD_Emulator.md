@@ -21,7 +21,7 @@
   - Validation: Emulator logs show login success; client proceeds to world connect; ACK observed.
   - Tasks: Identify LOGIN_REQUEST layout; implement parser; build 0x6D response with world IP/port.
   - Dependencies: M1, M2; capture data for LOGIN_REQUEST layout.
-  - Status: In progress. [12/29/25-04:12PM] Added MSB-first bitstream decode + 0x6D login decoder in HookInjector with optional MSB bit dump; added offline log decoder script to parse fom_hook.log. Intended delta: capture/inspect exact 0x6D payload + status + raw 2048-bit string region from client. Diff: HookInjector/fom_hook.cpp, Scripts/decode_6d_from_log.py. Rollback: git checkout -- HookInjector/fom_hook.cpp Scripts/decode_6d_from_log.py
+  - Status: In progress. [12/29/25-04:12PM] Added MSB-first bitstream decode + 0x6D login decoder in HookInjector with optional MSB bit dump; added offline log decoder script to parse fom_hook.log. Intended delta: capture/inspect exact 0x6D payload + status + raw 2048-bit string region from client. Diff: HookInjector/fom_hook.cpp, Scripts/decode_6d_from_log.py. Rollback: git checkout -- HookInjector/fom_hook.cpp Scripts/decode_6d_from_log.py. [12/29/25-05:10PM] Added offset-shifted frame decode around 0x6C hits in PacketHandler scanNestedFrames; added login frame logger + dry-run 0x6D parser hook to avoid auth side effects. Intended delta: surface nested 0x6D payloads and parse without sending response. Diff: ServerEmulator/src/handlers/PacketHandler.ts, Docs/Logs/FoTD_Emulator.md. Rollback: git checkout -- ServerEmulator/src/handlers/PacketHandler.ts Docs/Logs/FoTD_Emulator.md
 
 - [ ] [12/28/25-11:02PM] M4 World accept + ID/MessageGroup scaffold
   - Context: Docs\Specs\FoTD_Emulator.md (Solution Sketch #4)
