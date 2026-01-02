@@ -10,6 +10,8 @@ Many addresses, packet layouts, symbol names, and flow notes are provisional and
 places. Treat everything here as hypotheses until confirmed in IDA, logs, or live behavior. If you are
 reading this without AI support, plan on extra friction and double-check every claim.
 
+## Overview
+
 This repo is a working reverse-engineering + emulation sandbox for **Face of Mankind** (FoM).
 It includes a TypeScript server emulator, a TypeScript client emulator, hook/inject tooling, and
 reverse-engineering notes/mappings.
