@@ -10,6 +10,9 @@ Many addresses, packet layouts, symbol names, and flow notes are provisional and
 places. Treat everything here as hypotheses until confirmed in IDA, logs, or live behavior. If you are
 reading this without AI support, plan on extra friction and double-check every claim.
 
+This is not a definitive server/client emulator. Treat it as a **starting point** and feel free to
+fork, modify, and rework it to fit your own goals.
+
 ## Overview
 
 This repo is a working reverse-engineering + emulation sandbox for **Face of Mankind** (FoM).
