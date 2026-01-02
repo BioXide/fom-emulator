@@ -42,11 +42,14 @@ start_client_world.bat
 ```
 
 ### 3) Real FoM Client (Steam -> Client/)
-Place the **Fall of the Dominion** Steam install into:
+Download **Fall of the Dominion** from Steam, then place the install into:
 ```
 Client\
 ```
 Expected contents include the FoM client EXE + resources (the real game install layout).
+
+To point the client at the emulator, place `master.cfg` and `fom_public.key` **beside the game EXE**.
+`master.cfg` controls the master server IP/port (default here: `127.0.0.1:61000`).
 
 To run the game client with hook logging:
 ```bat
@@ -61,6 +64,8 @@ How it works (short):
 - `Client\dinput8.dll` is loaded first by the game (DLL search order).
 - The proxy loads the real system `dinput8.dll` and forwards exports.
 - On `DLL_PROCESS_ATTACH`, it starts the hook thread (`HookAttach`) that installs detours/logging.
+
+This proxy is optional and is used for logging + code injection.
 
 Build + deploy:
 ```bat
