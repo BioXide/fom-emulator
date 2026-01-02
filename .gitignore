@@ -30,6 +30,9 @@
 !/ServerEmulator/**
 !/Client/
 !/Client/**/
+!/Client/fom_hook.ini
+!/Client/fom_public.key
+!/Client/OpenAL32.dll
 !/Client/**/*.i64
 !/Client/**/*.idb
 !/Client/**/*.id0
