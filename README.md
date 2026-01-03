@@ -126,7 +126,7 @@ launch_fom_with_log.bat
   Canonical address map of named symbols and findings.
 
 - `Client/*.i64` (IDA databases)  
-  IDA Pro databases for `fom_client.exe`, `CShell.dll`, and `CRes.dll`. Open the `.i64` beside the matching binary to get all renames, types, and comments.
+  IDA Pro 9.2 databases for `fom_client.exe`, `CShell.dll`, and `CRes.dll`. Open the `.i64` beside the matching binary to get all renames, types, and comments.
 
 ## Common Tasks
 
@@ -149,7 +149,7 @@ start_client_world.bat -host 127.0.0.1 -port 62000 -world-id 1 -world-inst 1 -wo
 
 - Windows (batch scripts are provided)
 - Node.js + npm (used by `ServerEmulator` and `ClientEmulator`)
-- IDA Pro for reverse‑engineering (see `AGENTS.md` for MCP wiring)
+- `IDA Professional 9.2` for reverse‑engineering (see `AGENTS.md` for MCP wiring)
 
 ## Notes
 
