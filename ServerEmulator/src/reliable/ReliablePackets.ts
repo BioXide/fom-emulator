@@ -42,9 +42,11 @@ function scoreParsedDatagram(parsed: ParsedRakNetDatagram): number {
             score += 2;
         }
         if (
-            pkt.innerData.includes(RakNetMessageId.ID_LOGIN_REQUEST_TEXT) ||
+            pkt.innerData.includes(RakNetMessageId.ID_LOGIN_REQUEST) ||
             pkt.innerData.includes(RakNetMessageId.ID_LOGIN_REQUEST_RETURN) ||
             pkt.innerData.includes(RakNetMessageId.ID_LOGIN) ||
+            pkt.innerData.includes(RakNetMessageId.ID_LOGIN_RETURN) ||
+            pkt.innerData.includes(RakNetMessageId.ID_LOGIN_TOKEN_CHECK) ||
             pkt.innerData.includes(RakNetMessageId.ID_WORLD_LOGIN) ||
             pkt.innerData.includes(RakNetMessageId.ID_WORLD_LOGIN_RETURN) ||
             pkt.innerData.includes(RakNetMessageId.ID_WORLD_SELECT)

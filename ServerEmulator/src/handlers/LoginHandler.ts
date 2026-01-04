@@ -1,12 +1,8 @@
 import * as crypto from 'crypto';
 import RakBitStream from '../raknet-js/structures/BitStream';
 import { BitOrder } from '../protocol/BitOrder';
-import { RakNetMessageId, LoginResult } from '../protocol/Constants';
-import {
-    readCompressedString,
-    readHuffmanStringRawLenBE,
-    writeCompressedString,
-} from '../protocol/RakStringCompressor';
+import { RakNetMessageId, LoginRequestReturnStatus, LoginReturnStatus } from '../protocol/Constants';
+import { readCompressedString, writeCompressedString } from '../protocol/RakStringCompressor';
 import { Connection, LoginPhase } from '../network/Connection';
 import { APARTMENT_WORLD_TABLE } from '../world/WorldRegistry';
 
@@ -149,10 +145,10 @@ export class LoginHandler {
         return writer.data.subarray(0, outBytes);
     }
 
-    // Read a bounded ASCII string using a bit-length prefix.
-    private readBoundedString(stream: RakBitStream, maxLen: number): string {
+    // Read a bounded byte array using a bit-length prefix.
+    private readBoundedBytes(stream: RakBitStream, maxLen: number): Buffer {
         if (maxLen <= 1) {
-            return '';
+            return Buffer.alloc(0);
         }
         const bits = Math.floor(Math.log2(maxLen)) + 1;
         const len = stream.readBits(bits);
@@ -165,16 +161,29 @@ export class LoginHandler {
                 bytes.push(byte);
             }
         }
-        return Buffer.from(bytes).toString('latin1');
+        return Buffer.from(bytes);
     }
 
-    // Read a big-endian u32 from the bitstream.
-    private readU32(stream: RakBitStream): number {
-        const b0 = stream.readBits(8);
-        const b1 = stream.readBits(8);
-        const b2 = stream.readBits(8);
-        const b3 = stream.readBits(8);
-        return ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3) >>> 0;
+    // Read a bounded ASCII string using a bit-length prefix.
+    private readBoundedString(stream: RakBitStream, maxLen: number): string {
+        return this.readBoundedBytes(stream, maxLen).toString('latin1');
+    }
+
+    // Write a bounded ASCII string using a bit-length prefix.
+    private writeBoundedString(stream: RakBitStream, value: string, maxLen: number): void {
+        if (maxLen <= 1) {
+            return;
+        }
+        const raw = Buffer.from(value ?? '', 'latin1');
+        let length = raw.length;
+        if (length >= maxLen) {
+            length = maxLen - 1;
+        }
+        const bits = Math.floor(Math.log2(maxLen)) + 1;
+        stream.writeBits(length, bits);
+        for (let i = 0; i < length; i += 1) {
+            stream.writeBits(raw[i], 8);
+        }
     }
 
     // Read a compressed unsigned integer (RakNet "compressed") of size bytes.
@@ -189,53 +198,7 @@ export class LoginHandler {
         return value >>> 0;
     }
 
-    // Consume a fixed number of bytes from the bitstream.
-    private skipBytes(stream: RakBitStream, count: number): void {
-        for (let i = 0; i < count; i += 1) {
-            stream.readBits(8);
-        }
-    }
 
-    // Read either Huffman or compressed string without committing if parse fails.
-    private readMaybeHuffmanString(stream: RakBitStream, maxLen: number): string {
-        const offset = stream.readOffsetBits();
-        const cloneAtOffset = () => {
-            const clone = new RakBitStream(stream.data);
-            if (offset > 0) {
-                clone.readBits(offset);
-            }
-            return clone;
-        };
-        try {
-            const clone = cloneAtOffset();
-            const before = clone.readOffsetBits();
-            const value = readHuffmanStringRawLenBE(clone, maxLen);
-            const consumed = clone.readOffsetBits() - before;
-            if (consumed > 0) {
-                stream.readBits(consumed);
-            }
-            return value;
-        } catch {
-            try {
-                const clone = cloneAtOffset();
-                const before = clone.readOffsetBits();
-                const value = readCompressedString(clone, maxLen);
-                const consumed = clone.readOffsetBits() - before;
-                if (consumed > 0) {
-                    stream.readBits(consumed);
-                }
-                return value;
-            } catch {
-                return '';
-            }
-        }
-    }
-
-    // Build the session string returned in 0x6D (session token only).
-    private buildSessionString(username: string, token: number): string {
-        const rand = crypto.randomBytes(8).toString('hex');
-        return `sess=${rand}`;
-    }
 
     // Parse dotted IPv4 string into byte array.
     private parseIpv4Bytes(value: string): number[] | null {
@@ -262,7 +225,7 @@ export class LoginHandler {
         return true;
     }
 
-    // === Login Flow (ordered: 0x6C -> 0x6D -> 0x6E -> 0x7B -> 0x72 -> 0x73) ===
+    // === Login Flow (ordered: 0x6B -> 0x6D -> 0x6E -> 0x6F -> 0x72 -> 0x73, optional 0x70) ===
 
     // Check whether a packet ID belongs to the login flow for the current server mode.
     isLoginRequestId(packetId: number): boolean {
@@ -273,8 +236,9 @@ export class LoginHandler {
             );
         }
         return (
-            packetId === RakNetMessageId.ID_LOGIN_REQUEST_TEXT ||
+            packetId === RakNetMessageId.ID_LOGIN_REQUEST ||
             packetId === RakNetMessageId.ID_LOGIN ||
+            packetId === RakNetMessageId.ID_LOGIN_TOKEN_CHECK ||
             packetId === RakNetMessageId.ID_WORLD_LOGIN
         );
     }
@@ -386,19 +350,16 @@ export class LoginHandler {
             const wasAuth = connection.authenticated;
             this.parseLoginAuth(stream, connection, source, dryRun);
             if (!dryRun && connection.authenticated) {
-                if (this.config.serverMode !== 'world' && !connection.worldSelectSent) {
-                    const playerId = this.resolveWorldSelectPlayerId(connection);
-                    const worldId = this.config.worldSelectWorldId;
-                    const worldInst =
-                        worldId === 4 && this.config.worldSelectWorldInst === 0
-                            ? this.allocApartmentInst(connection)
-                            : this.config.worldSelectWorldInst;
-                    const response = this.buildWorldSelect(playerId, worldId, worldInst);
-                    connection.worldSelectSent = true;
+                if (this.config.serverMode === 'master') {
+                    const loginReturn = this.buildLoginReturn({
+                        status: LoginReturnStatus.SUCCESS,
+                        playerId: this.resolveWorldSelectPlayerId(connection),
+                        clientVersion: connection.pendingLoginClientVersion ?? 0,
+                    });
                     this.logLoginDebug(
-                        `[Login6E] auth ok -> 0x7B worldId=${worldId} worldInst=${worldInst} playerId=${playerId}`,
+                        `[Login6E] auth ok -> 0x6F playerId=${connection.worldSelectPlayerId || 0}`,
                     );
-                    return this.hooks.wrapReliable(response, connection);
+                    return this.hooks.wrapReliable(loginReturn, connection);
                 }
             }
             if (!dryRun && this.hooks.onAuthenticated) {
@@ -408,6 +369,10 @@ export class LoginHandler {
             return null;
         }
 
+        if (packetId === RakNetMessageId.ID_LOGIN_TOKEN_CHECK) {
+            return this.parseLoginTokenCheck(stream, connection, source, dryRun);
+        }
+
         if (!this.isLoginRequestId(packetId)) {
             return null;
         }
@@ -415,8 +380,8 @@ export class LoginHandler {
         if (minBytes !== null && buffer.length < minBytes) {
             return null;
         }
-        if (packetId === RakNetMessageId.ID_LOGIN_REQUEST_TEXT) {
-            return this.parseLoginRequestText(stream, connection, source, dryRun);
+        if (packetId === RakNetMessageId.ID_LOGIN_REQUEST) {
+            return this.parseLoginRequest(stream, connection, source, dryRun);
         }
 
         return null;
@@ -424,9 +389,11 @@ export class LoginHandler {
 
     // Enforce minimum byte requirements for known login packets.
     private minParseBytesForPacketId(packetId: number): number | null {
-        if (packetId === RakNetMessageId.ID_LOGIN_REQUEST_TEXT) {
-            // 0x6C: id + raw u32 bit-length + token (u16), plus 2 flag bits.
-            return 1 + 4 + 2;
+        if (packetId === RakNetMessageId.ID_LOGIN_REQUEST) {
+            return 1;
+        }
+        if (packetId === RakNetMessageId.ID_LOGIN_TOKEN_CHECK) {
+            return 1;
         }
         if (packetId === RakNetMessageId.ID_LOGIN) {
             return 1;
@@ -437,48 +404,36 @@ export class LoginHandler {
         return null;
     }
 
-    // Parse 0x6C (LOGIN_REQUEST_TEXT) and build 0x6D response when valid.
-    // 0x6C payload (client -> master, MSB bit order):
-    //   - preFlag bit (must be 0)
-    //   - username (Huffman string, max 2048)
-    //   - postFlag bit (must be 0)
-    //   - token u16
+    // Parse 0x6B (LOGIN_REQUEST) and build 0x6D response when valid.
+    // 0x6B payload (client -> master, MSB bit order):
+    //   - username (RakNet StringCompressor, max 2048)
+    //   - clientVersion (compressed u16)
     // 0x6D response (master -> client):
-    //   - [optional] ID_TIMESTAMP + u64 time (LOGIN_RESPONSE_TIMESTAMP)
     //   - ID_LOGIN_REQUEST_RETURN
     //   - status (compressed u8)
-    //   - session/address string (RakNet StringCompressor, max 2048)
-    parseLoginRequestText(
+    //   - username (RakNet StringCompressor, max 2048)
+    parseLoginRequest(
         stream: RakBitStream,
         connection: Connection,
         source: string,
         dryRun: boolean,
     ): Buffer | null {
         try {
-            const preFlag = stream.readBit();
-            const rawUser = readHuffmanStringRawLenBE(stream, 2048);
-            const postFlag = stream.readBit();
+            const rawUser = readCompressedString(stream, 2048);
             const username = this.isPrintableAscii(rawUser) ? rawUser : '';
-            const token = stream.readBits(16);
+            const clientVersion = this.readCompressedUInt(stream, 2) & 0xffff;
             const validUser = username.length >= 3 && username.length <= 64;
-            const flagOk = preFlag === 0 && postFlag === 0;
-            const tokenOk = token !== 0;
 
-            if (!validUser || !flagOk || !tokenOk) {
+            if (dryRun) {
                 this.logLoginDebug(
-                    `[Login6C] reject src=${source} userLen=${username.length} pre=${preFlag} post=${postFlag} token=0x${token.toString(16)}`,
+                    `[Login6B] dryRun skip src=${source} user="${username}" ver=${clientVersion}`,
                 );
                 return null;
             }
 
-            if (!username) {
-                this.logLoginDebug(`[Login6C] reject src=${source} empty user`);
-                return null;
-            }
-
-            if (dryRun) {
+            if (!validUser || !username) {
                 this.logLoginDebug(
-                    `[Login6C] dryRun skip src=${source} user="${username}" token=0x${token.toString(16)}`,
+                    `[Login6B] reject src=${source} userLen=${username.length} ver=${clientVersion}`,
                 );
                 return null;
             }
@@ -490,14 +445,14 @@ export class LoginHandler {
                 now - connection.lastLoginResponseSentAt < cooldownMs
             ) {
                 this.logLoginDebug(
-                    `[Login6C] cooldown skip src=${source} user="${username}" token=0x${token.toString(16)}`,
+                    `[Login6B] cooldown skip src=${source} user="${username}" ver=${clientVersion}`,
                 );
                 return null;
             }
 
             if (connection.loginPhase === LoginPhase.AUTHENTICATED) {
                 this.logLoginDebug(
-                    `[Login6C] already authenticated src=${source} user="${username}"`,
+                    `[Login6B] already authenticated src=${source} user="${username}"`,
                 );
                 return null;
             }
@@ -508,13 +463,7 @@ export class LoginHandler {
             ) {
                 if (connection.pendingLoginUser && username !== connection.pendingLoginUser) {
                     this.logLoginDebug(
-                        `[Login6C] pending mismatch user src=${source} user="${username}" pending="${connection.pendingLoginUser}"`,
-                    );
-                    return null;
-                }
-                if (connection.pendingLoginToken && token !== connection.pendingLoginToken) {
-                    this.logLoginDebug(
-                        `[Login6C] pending mismatch token src=${source} token=0x${token.toString(16)} pending=0x${connection.pendingLoginToken.toString(16)}`,
+                        `[Login6B] pending mismatch user src=${source} user="${username}" pending="${connection.pendingLoginUser}"`,
                     );
                     return null;
                 }
@@ -526,124 +475,115 @@ export class LoginHandler {
                     username !== connection.pendingLoginUser
                 ) {
                     this.logLoginDebug(
-                        `[Login6C] pending user conflict src=${source} user="${username}" pending="${connection.pendingLoginUser}"`,
-                    );
-                    return null;
-                }
-                if (
-                    connection.pendingLoginToken &&
-                    token &&
-                    token !== connection.pendingLoginToken
-                ) {
-                    this.logLoginDebug(
-                        `[Login6C] pending token conflict src=${source} token=0x${token.toString(16)} pending=0x${connection.pendingLoginToken.toString(16)}`,
+                        `[Login6B] pending user conflict src=${source} user="${username}" pending="${connection.pendingLoginUser}"`,
                     );
                     return null;
                 }
             }
             if (
                 connection.loginPhase === LoginPhase.USER_SENT &&
-                connection.pendingLoginUser === username &&
-                connection.pendingLoginToken === token
+                connection.pendingLoginUser === username
             ) {
-                if (connection.pendingLoginSession) {
-                    if (!this.config.resendDuplicateLogin6D) {
-                        this.logLoginDebug(
-                            `[Login6C] duplicate pending -> skip resend 0x6D src=${source} user="${username}" token=0x${token.toString(16)}`,
-                        );
-                        return null;
-                    }
+                if (!this.config.resendDuplicateLogin6D) {
                     this.logLoginDebug(
-                        `[Login6C] duplicate pending -> resend 0x6D src=${source} user="${username}" token=0x${token.toString(16)}`,
+                        `[Login6B] duplicate pending -> skip resend 0x6D src=${source} user="${username}"`,
                     );
-                    const login = this.buildLoginResponse(
-                        true,
-                        this.config.worldIp,
-                        this.config.worldPort,
-                        connection.pendingLoginSession,
-                    );
-                    if (login.length === 0) {
-                        this.logLoginDebug(
-                            `[Login6C] duplicate pending build 0x6D failed src=${source} user="${username}"`,
-                        );
-                        return null;
-                    }
-                    const wrapped = this.hooks.wrapReliable(login, connection);
-                    this.logLoginDebug(
-                        `[Login6C] duplicate pending built 0x6D len=${login.length} wrapped=${wrapped.length} src=${source}`,
-                    );
-                    return wrapped;
+                    return null;
                 }
                 this.logLoginDebug(
-                    `[Login6C] duplicate pending src=${source} user="${username}" token=0x${token.toString(16)}`,
+                    `[Login6B] duplicate pending -> resend 0x6D src=${source} user="${username}"`,
                 );
-                return null;
+                const login = this.buildLoginRequestReturn(
+                    LoginRequestReturnStatus.SUCCESS,
+                    username,
+                );
+                if (login.length === 0) {
+                    this.logLoginDebug(
+                        `[Login6B] duplicate pending build 0x6D failed src=${source} user="${username}"`,
+                    );
+                    return null;
+                }
+                const wrapped = this.hooks.wrapReliable(login, connection);
+                this.logLoginDebug(
+                    `[Login6B] duplicate pending built 0x6D len=${login.length} wrapped=${wrapped.length} src=${source}`,
+                );
+                return wrapped;
             }
 
             // Store pending login info; wait for 0x6E auth before authenticating.
-            const session = this.buildSessionString(username, token);
             connection.pendingLoginUser = username;
-            connection.pendingLoginToken = token;
-            connection.pendingLoginSession = session;
+            connection.pendingLoginClientVersion = clientVersion;
             connection.pendingLoginAt = Date.now();
             connection.loginPhase = LoginPhase.USER_SENT;
 
             this.logLoginDebug(
-                `[Login6C] build 0x6D src=${source} user="${username}" token=0x${token.toString(16)} sessionLen=${session.length}`,
+                `[Login6B] build 0x6D src=${source} user="${username}" ver=${clientVersion}`,
             );
-            const login = this.buildLoginResponse(
-                true,
-                this.config.worldIp,
-                this.config.worldPort,
-                session,
+            const login = this.buildLoginRequestReturn(
+                LoginRequestReturnStatus.SUCCESS,
+                username,
             );
             if (login.length === 0) {
-                this.logLoginDebug(`[Login6C] build 0x6D failed src=${source} user="${username}"`);
+                this.logLoginDebug(`[Login6B] build 0x6D failed src=${source} user="${username}"`);
                 return null;
             }
             const wrapped = this.hooks.wrapReliable(login, connection);
             this.logLoginDebug(
-                `[Login6C] built 0x6D len=${login.length} wrapped=${wrapped.length} src=${source}`,
+                `[Login6B] built 0x6D len=${login.length} wrapped=${wrapped.length} src=${source}`,
             );
             return wrapped;
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            this.logLoginDebug(`[Login6C] exception src=${source} err=${msg}`);
+            this.logLoginDebug(`[Login6B] exception src=${source} err=${msg}`);
+            return null;
+        }
+    }
+
+    parseLoginTokenCheck(
+        stream: RakBitStream,
+        connection: Connection,
+        source: string,
+        dryRun: boolean,
+    ): Buffer | null {
+        try {
+            const fromServer = stream.readBit() === 1;
+            if (fromServer) {
+                const success = stream.readBit() === 1;
+                const username = this.readBoundedString(stream, 0x20);
+                this.logLoginDebug(
+                    `[Login70] recv server->client src=${source} success=${success} user="${username}"`,
+                );
+                return null;
+            }
+            const requestToken = this.readBoundedString(stream, 0x20);
+            if (dryRun) {
+                this.logLoginDebug(
+                    `[Login70] dryRun skip src=${source} token="${requestToken}"`,
+                );
+                return null;
+            }
+            const username = connection.pendingLoginUser || connection.username || '';
+            const response = this.buildLoginTokenCheckResponse(true, username);
+            this.logLoginDebug(
+                `[Login70] respond src=${source} token="${requestToken}" user="${username}"`,
+            );
+            return this.hooks.wrapReliable(response, connection);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.logLoginDebug(`[Login70] exception src=${source} err=${msg}`);
             return null;
         }
     }
 
     // Build 0x6D LOGIN_REQUEST_RETURN payload (master -> client).
-    buildLoginResponse(
-        success: boolean,
-        worldIp: string = '',
-        worldPort: number = 0,
-        sessionOverride?: string,
-    ): Buffer {
+    buildLoginRequestReturn(status: LoginRequestReturnStatus, username: string): Buffer {
         const writer = new RakBitStream();
         if (this.config.loginResponseTimestamp) {
-            writer.writeByte(RakNetMessageId.ID_TIMESTAMP);
-            writer.writeLongLong(BigInt(Date.now()));
+            this.logLoginDebug('[Login6D] loginResponseTimestamp ignored for ID_LOGIN_REQUEST_RETURN');
         }
         writer.writeByte(RakNetMessageId.ID_LOGIN_REQUEST_RETURN);
-        writer.writeCompressed(success ? LoginResult.SUCCESS : LoginResult.FAILURE, 1);
-
-        const override = sessionOverride && sessionOverride.length > 0 ? sessionOverride : '';
-        const address = success
-            ? override ||
-              (this.config.loginResponseMinimal ? '' : this.formatWorldAddress(worldIp, worldPort))
-            : '';
-        if (this.config.loginDebug || this.config.verbose) {
-            const mode = this.config.loginResponseTimestamp ? 'ts+6d' : '6d';
-            console.log(
-                `[Login6D] build mode=${mode} success=${success} addr="${address}" len=${address.length}`,
-            );
-            if (override) {
-                console.log(`[Login6D] session="${override}"`);
-            }
-        }
-        // LOGIN_REQUEST_RETURN uses RakNet StringCompressor (WriteCompressed length).
-        writeCompressedString(writer, address, 2048);
+        writer.writeCompressed(status & 0xff, 1);
+        writeCompressedString(writer, username ?? '', 2048);
 
         const payload = writer.data;
 
@@ -656,11 +596,11 @@ export class LoginHandler {
                 return Buffer.alloc(0);
             }
             const statusStream = verify.readCompressed(1);
-            const status = statusStream.readByte();
-            const decoded = readCompressedString(verify, 2048);
-            if (decoded !== address) {
+            const statusDecoded = statusStream.readByte();
+            const decodedUser = readCompressedString(verify, 2048);
+            if (decodedUser !== (username ?? '')) {
                 console.log(
-                    `[Login6D] encode verify failed: status=${status} expected="${address}" got="${decoded}"`,
+                    `[Login6D] encode verify failed: status=${statusDecoded} expected="${username}" got="${decodedUser}"`,
                 );
                 return Buffer.alloc(0);
             }
@@ -672,32 +612,96 @@ export class LoginHandler {
 
         if (this.config.loginDebug || this.config.verbose) {
             console.log(
-                `[Login6D] build ok payloadLen=${payload.length} first=0x${payload[0].toString(16)}`,
+                `[Login6D] build ok status=${status} user="${username}" len=${payload.length}`,
             );
         }
         return payload;
     }
 
-    // Build world address session string for the 0x6D session payload.
-    private formatWorldAddress(worldIp: string, worldPort: number): string {
-        const trimmed = (worldIp || '').trim();
-        if (!trimmed) return '';
-        if (worldPort > 0 && !trimmed.includes(':')) {
-            return `${trimmed}:${worldPort}`;
+    private buildLoginTokenCheckResponse(success: boolean, username: string): Buffer {
+        const writer = new RakBitStream();
+        writer.writeByte(RakNetMessageId.ID_LOGIN_TOKEN_CHECK);
+        writer.writeBit(true); // fromServer
+        writer.writeBit(Boolean(success));
+        this.writeBoundedString(writer, username ?? '', 0x20);
+        return writer.data;
+    }
+
+    private buildLoginReturn(options: {
+        status: LoginReturnStatus;
+        playerId: number;
+        clientVersion: number;
+        accountType?: number;
+        field4?: boolean;
+        field5?: boolean;
+        isBanned?: boolean;
+    }): Buffer {
+        const writer = new RakBitStream();
+        writer.writeByte(RakNetMessageId.ID_LOGIN_RETURN);
+        writer.writeCompressed(options.status & 0xff, 1);
+        writer.writeCompressed(options.playerId >>> 0, 4);
+        if (options.playerId !== 0) {
+            const accountType = options.accountType ?? 0;
+            writer.writeCompressed(accountType & 0xff, 1);
+            writer.writeBit(Boolean(options.field4));
+            writer.writeBit(Boolean(options.field5));
+            writer.writeCompressed(options.clientVersion & 0xffff, 2);
+            const isBanned = Boolean(options.isBanned);
+            writer.writeBit(isBanned);
+            if (isBanned) {
+                writeCompressedString(writer, '0', 2048);
+                writeCompressedString(writer, '', 2048);
+            }
+            // worldIDs vector (count + ids)
+            writer.writeCompressed(0, 1);
+            // factionMOTD
+            writeCompressedString(writer, '', 2048);
+            this.writeApartment(writer);
+            writer.writeCompressed(0, 1);
+            writer.writeCompressed(0, 1);
         }
-        return trimmed;
+        return writer.data;
+    }
+
+    private writeApartment(writer: RakBitStream): void {
+        // NOTE: EncodeString/DecodeString semantics are assumed to be RakNet StringCompressor here.
+        writer.writeCompressed(0, 4); // id
+        writer.writeCompressed(0, 1); // type
+        writer.writeCompressed(0, 4); // ownerPlayerID
+        writer.writeCompressed(0, 4); // ownerFactionID
+        // allowedRanks vector
+        writer.writeCompressed(0, 1);
+        writer.writeBit(false); // isOpen
+        writeCompressedString(writer, '', 2048); // ownerName
+        writeCompressedString(writer, '', 2048); // entryCode
+        // storage ItemList
+        writer.writeCompressed(0, 2); // capacity
+        writer.writeCompressed(0, 4); // field_14
+        writer.writeCompressed(0, 4); // field_18
+        writer.writeCompressed(0, 4); // field_1C
+        writer.writeCompressed(0, 2); // itemCount
+        writer.writeBit(false); // hasPublicInfo
+        writer.writeCompressed(0, 4); // entryPrice
+        writeCompressedString(writer, '', 2048); // publicName
+        writeCompressedString(writer, '', 2048); // publicDescription
+        // allowedFactions map
+        writer.writeCompressed(0, 4);
+        writer.writeBit(false); // isDefault
+        writer.writeBit(false); // isFeatured
+        writer.writeCompressed(0, 4); // occupancy
     }
 
     // Parse 0x6E (LOGIN auth packet) and mark the connection authenticated.
-    // Read order mirrors Packet_ID_LOGIN_Serialize in the client:
-    //   - username (Huffman string, max 2048) [ClientNetworking this+0x91]
-    //   - sessionHashHex (bounded 64) [MD5 hex built in ClientNetworking_HandleLoginRequestReturn_6D]
-    //   - clientInfoU32[3] (u32 x3) [vector copied from ClientNetworking this+0x59C]
-    //   - macAddress (Huffman string, max 2048) [GetAdaptersInfo -> "xx-xx-xx-xx-xx-xx"]
-    //   - 4x pairs: (bounded 64, bounded 32) [currently empty in the 0x6E build path]
-    //   - hostName (bounded 64) [ClientNetworking this+0x111]
-    //   - computerName (Huffman/Compressed, max 2048) [GetComputerNameA, 32 bytes]
-    //   - blobFlag bit, if set: 0x400 bytes + blobU32
+    // Read order mirrors Packet_ID_LOGIN (Docs/Packets/ID_LOGIN.md):
+    //   - username (StringCompressor)
+    //   - passwordHash (bounded string, 64 bytes)
+    //   - fileCRCs[3] (compressed u32)
+    //   - macAddress (StringCompressor)
+    //   - driveModels[4] (bounded string, 64 bytes)
+    //   - driveSerialNumbers[4] (bounded string, 32 bytes)
+    //   - loginToken (bounded string, 64 bytes)
+    //   - computerName (StringCompressor)
+    //   - hasSteamTicket bit, if set: 0x400 compressed bytes + compressed u32 length
     parseLoginAuth(
         stream: RakBitStream,
         connection: Connection,
@@ -712,37 +716,38 @@ export class LoginHandler {
         }
 
         let username = '';
-        let sessionHash = '';
-        let hostName = '';
         let computerName = '';
         let macAddress = '';
-        let infoU32a = 0;
-        let infoU32b = 0;
-        let infoU32c = 0;
-        const infoPairs: Array<{ left: string; right: string }> = [];
-        let blobFlag = 0;
-        let blobBytes = 0;
-        let blobU32 = 0;
+        let loginToken = '';
+        let passwordHash = Buffer.alloc(0);
+        const fileCRCs: number[] = [];
+        const driveModels: string[] = [];
+        const driveSerials: string[] = [];
+        let hasSteamTicket = false;
+        let steamTicketBytes = 0;
+        let steamTicketLength = 0;
 
         try {
-            username = readHuffmanStringRawLenBE(stream, 2048);
-            sessionHash = this.readBoundedString(stream, 64);
-            infoU32a = this.readU32(stream);
-            infoU32b = this.readU32(stream);
-            infoU32c = this.readU32(stream);
-            macAddress = readHuffmanStringRawLenBE(stream, 2048);
-            for (let i = 0; i < 4; i += 1) {
-                const left = this.readBoundedString(stream, 64);
-                const right = this.readBoundedString(stream, 32);
-                infoPairs.push({ left, right });
+            username = readCompressedString(stream, 2048);
+            passwordHash = this.readBoundedBytes(stream, 0x40);
+            for (let i = 0; i < 3; i += 1) {
+                fileCRCs.push(this.readCompressedUInt(stream, 4));
             }
-            hostName = this.readBoundedString(stream, 64);
-            computerName = this.readMaybeHuffmanString(stream, 2048);
-            blobFlag = stream.readBit();
-            if (blobFlag) {
-                this.skipBytes(stream, 0x400);
-                blobBytes = 0x400;
-                blobU32 = this.readU32(stream);
+            macAddress = readCompressedString(stream, 2048);
+            for (let i = 0; i < 4; i += 1) {
+                driveModels.push(this.readBoundedString(stream, 0x40));
+                driveSerials.push(this.readBoundedString(stream, 0x20));
+            }
+            loginToken = this.readBoundedString(stream, 0x40);
+            computerName = readCompressedString(stream, 2048);
+            hasSteamTicket = stream.readBit() === 1;
+            if (hasSteamTicket) {
+                steamTicketBytes = 0x400;
+                for (let i = 0; i < 0x400; i += 1) {
+                    const comp = stream.readCompressed(1);
+                    comp.readByte();
+                }
+                steamTicketLength = this.readCompressedUInt(stream, 4);
             }
         } catch {
             // Best-effort parse; still allow auth to continue.
@@ -759,16 +764,15 @@ export class LoginHandler {
         // TODO(DB): validate 0x6E auth payload before accepting login / sending 0x73.
         if (!this.validateLoginAuthWithDb(connection, {
             username,
-            sessionHash,
-            hostName,
             computerName,
             macAddress,
-            infoU32a,
-            infoU32b,
-            infoU32c,
-            blobFlag: blobFlag === 1,
-            blobBytes,
-            blobU32,
+            passwordHash,
+            loginToken,
+            fileCRCs,
+            driveModels,
+            driveSerials,
+            hasSteamTicket,
+            steamTicketLength,
         })) {
             this.logLoginDebug(
                 `[Login6E] reject (db) src=${source} user="${username}"`,
@@ -776,32 +780,30 @@ export class LoginHandler {
             return;
         }
 
-        connection.loginAuthSessionHash = sessionHash;
         connection.loginAuthUsername = username;
-        connection.loginAuthHost = hostName;
         connection.loginAuthComputer = computerName;
-        connection.loginAuthBlobFlag = blobFlag === 1;
-        connection.loginAuthBlobBytes = blobBytes;
-        connection.loginAuthBlobU32 = blobU32;
+        connection.loginAuthPasswordHash = passwordHash.toString('hex');
+        connection.loginAuthMacAddress = macAddress;
+        connection.loginAuthLoginToken = loginToken;
+        connection.loginAuthFileCRCs = fileCRCs;
+        connection.loginAuthSteamTicket = hasSteamTicket;
+        connection.loginAuthSteamTicketLength = steamTicketLength;
+        connection.loginAuthSteamTicketBytes = steamTicketBytes;
 
         connection.username = username;
         connection.authenticated = true;
         connection.loginPhase = LoginPhase.AUTHENTICATED;
         connection.pendingLoginUser = '';
-        connection.pendingLoginToken = 0;
-        connection.pendingLoginSession = '';
+        connection.pendingLoginClientVersion = 0;
         connection.pendingLoginAt = 0;
 
         if (this.config.loginDebug || this.config.verbose) {
-            const sessionPreview = sessionHash ? sessionHash.slice(0, 32) : '';
-            const hostPreview = hostName || computerName;
-            const blobNote = blobFlag
-                ? ` blob=0x${blobBytes.toString(16)} u32=0x${blobU32.toString(16)}`
-                : '';
-            const pairCount = infoPairs.filter((pair) => pair.left || pair.right).length;
-            const infoNote = ` mac="${macAddress}" info=[${infoU32a},${infoU32b},${infoU32c}] pairs=${pairCount}`;
+            const hashPreview = passwordHash.length > 0 ? passwordHash.subarray(0, 8).toString('hex') : '';
+            const crcNote = fileCRCs.length > 0 ? fileCRCs.map((v) => `0x${v.toString(16)}`).join(',') : 'none';
+            const driveNote = driveModels.filter((v) => v.length > 0).length;
+            const steamNote = hasSteamTicket ? ` steam=0x${steamTicketLength.toString(16)}` : '';
             console.log(
-                `[Login6E] ${connection.key} user="${username}" session="${sessionPreview}" host="${hostPreview}"${blobNote}${infoNote} src=${source}`,
+                `[Login6E] ${connection.key} user="${username}" hash=${hashPreview} mac="${macAddress}" token="${loginToken}" crcs=[${crcNote}] drives=${driveNote}${steamNote} src=${source}`,
             );
         }
     }
@@ -812,16 +814,15 @@ export class LoginHandler {
         _connection: Connection,
         _auth: {
             username: string;
-            sessionHash: string;
-            hostName: string;
             computerName: string;
             macAddress: string;
-            infoU32a: number;
-            infoU32b: number;
-            infoU32c: number;
-            blobFlag: boolean;
-            blobBytes: number;
-            blobU32: number;
+            passwordHash: Buffer;
+            loginToken: string;
+            fileCRCs: number[];
+            driveModels: string[];
+            driveSerials: string[];
+            hasSteamTicket: boolean;
+            steamTicketLength: number;
         },
     ): boolean {
         // TODO(DB): query account/session store here.

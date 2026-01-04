@@ -12,6 +12,7 @@ export type PacketFixture = {
         token?: number;
         preFlag?: number;
         postFlag?: number;
+        clientVersion?: number;
         payload_len?: number;
     };
     source_log?: string;

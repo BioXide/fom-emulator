@@ -14,6 +14,8 @@ export type FieldDef = {
         | 'u16'
         | 'u32'
         | 'u8c'
+        | 'u16c'
+        | 'u32c'
         | 'bytes'
         | 'huffman_string_rawlen_be'
         | 'huffman_string_compressed';
@@ -36,9 +38,7 @@ export type PacketSchema = {
 export type LoginDecodeResult = {
     ok: boolean;
     username: string;
-    token: number;
-    preFlag: number;
-    postFlag: number;
+    clientVersion: number;
     startBit: number;
     score: number;
 };
@@ -221,22 +221,21 @@ function isPrintableAscii(value: string): boolean {
     return true;
 }
 
-function scoreLogin(username: string, token: number, preFlag: number, postFlag: number): number {
+function scoreLoginRequest(username: string, clientVersion: number): number {
     let score = 0;
     if (isPrintableAscii(username)) score += 10;
     if (username.length >= 3 && username.length <= 64) score += 5;
-    if (preFlag === 0 && postFlag === 0) score += 3;
-    if (token !== 0) score += 2;
+    if (clientVersion !== 0) score += 2;
     return score;
 }
 
-export function decodeLogin6cFromPacket(
+export function decodeLogin6bFromPacket(
     packet: Buffer,
     maxScanBits: number = 1024,
 ): LoginDecodeResult | null {
     const inner = unwrapReliable(packet);
     if (inner.length === 0) return null;
-    const candidates = scanForMsgIdMsb(inner, 0x6c, maxScanBits);
+    const candidates = scanForMsgIdMsb(inner, 0x6b, maxScanBits);
     const ordered = [
         ...candidates.filter((bit) => bit % 8 === 0),
         ...candidates.filter((bit) => bit % 8 !== 0),
@@ -251,19 +250,16 @@ export function decodeLogin6cFromPacket(
         try {
             const stream = new RakBitStream(source);
             const id = stream.readByte();
-            if (id !== 0x6c) continue;
-            const preFlag = stream.readBit();
-            const username = readHuffmanStringRawLenBE(stream, 2048);
-            const postFlag = stream.readBit();
-            const token = stream.readBits(16);
-            const score = scoreLogin(username, token, preFlag, postFlag);
+            if (id !== 0x6b) continue;
+            const username = readCompressedString(stream, 2048);
+            const versionStream = stream.readCompressed(2);
+            const clientVersion = versionStream.readByte() | (versionStream.readByte() << 8);
+            const score = scoreLoginRequest(username, clientVersion);
 
             const result: LoginDecodeResult = {
                 ok: score >= 10,
                 username,
-                token,
-                preFlag,
-                postFlag,
+                clientVersion,
                 startBit,
                 score,
             };
@@ -351,6 +347,28 @@ export function decodeWithSchema(
                     case 'u8c': {
                         const comp = cursorStream.readCompressed(1);
                         fields[field.name] = comp.readByte();
+                        break;
+                    }
+                    case 'u16c': {
+                        const comp = cursorStream.readCompressed(2);
+                        let value = 0;
+                        let factor = 1;
+                        for (let i = 0; i < 2; i += 1) {
+                            value += comp.readByte() * factor;
+                            factor *= 256;
+                        }
+                        fields[field.name] = value >>> 0;
+                        break;
+                    }
+                    case 'u32c': {
+                        const comp = cursorStream.readCompressed(4);
+                        let value = 0;
+                        let factor = 1;
+                        for (let i = 0; i < 4; i += 1) {
+                            value += comp.readByte() * factor;
+                            factor *= 256;
+                        }
+                        fields[field.name] = value >>> 0;
                         break;
                     }
                     case 'u16':

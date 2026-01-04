@@ -349,9 +349,10 @@ export class PacketLogger {
         const forceLogin =
             this.containsLoginMarker(packet.data) ||
             effectiveId === 0x6b ||
-            effectiveId === 0x6c ||
             effectiveId === 0x6d ||
             effectiveId === 0x6e ||
+            effectiveId === 0x6f ||
+            effectiveId === 0x70 ||
             effectiveId === 0x72 ||
             effectiveId === 0x73 ||
             effectiveId === 0x7b;
@@ -412,9 +413,10 @@ export class PacketLogger {
             const b = buffer[i];
             if (
                 b === 0x6b ||
-                b === 0x6c ||
                 b === 0x6d ||
                 b === 0x6e ||
+                b === 0x6f ||
+                b === 0x70 ||
                 b === 0x72 ||
                 b === 0x73 ||
                 b === 0x7b
@@ -573,9 +575,11 @@ export class PacketLogger {
                 0x13: 'ID_DISCONNECTION_NOTIFICATION',
                 0x14: 'ID_CONNECTION_LOST',
                 0x6b: 'ID_LOGIN_REQUEST',
-                0x6c: 'ID_LOGIN_REQUEST_TEXT',
+                0x6c: 'ID_LOGIN_REQUEST_TEXT (legacy)',
                 0x6d: 'ID_LOGIN_REQUEST_RETURN',
                 0x6e: 'ID_LOGIN',
+                0x6f: 'ID_LOGIN_RETURN',
+                0x70: 'ID_LOGIN_TOKEN_CHECK',
                 0x72: 'ID_WORLD_LOGIN',
                 0x73: 'ID_WORLD_LOGIN_RETURN',
                 0x7b: 'ID_WORLD_SELECT',

@@ -68,9 +68,11 @@ export enum RakNetMessageId {
 
     // Game-specific (FoM)
     ID_LOGIN_REQUEST = 0x6b, // 107
-    ID_LOGIN_REQUEST_TEXT = 0x6c, // 108
+    ID_LOGIN_REQUEST_TEXT = 0x6c, // 108 (legacy; superseded by ID_LOGIN_REQUEST)
     ID_LOGIN_REQUEST_RETURN = 0x6d, // 109
     ID_LOGIN = 0x6e, // 110
+    ID_LOGIN_RETURN = 0x6f, // 111
+    ID_LOGIN_TOKEN_CHECK = 0x70, // 112
     ID_WORLD_LOGIN = 0x72, // 114
     ID_WORLD_LOGIN_RETURN = 0x73, // 115
     ID_WORLD_SELECT = 0x7b, // 123
@@ -140,10 +142,26 @@ export const ConnectionResponseFlag = {
 /**
  * Login result codes
  */
-export enum LoginResult {
-    SUCCESS = 0x01,
-    FAILURE = 0x00,
-    INVALID_CREDENTIALS = 0x02,
-    BANNED = 0x03,
-    SERVER_FULL = 0x04,
+export enum LoginRequestReturnStatus {
+    INVALID_INFO = 0,
+    SUCCESS = 1,
+    OUTDATED_CLIENT = 2,
+    ALREADY_LOGGED_IN = 3,
+}
+
+export enum LoginReturnStatus {
+    INVALID_LOGIN = 0,
+    SUCCESS = 1,
+    UNKNOWN_USERNAME = 2,
+    LOGIN_RETURN_3 = 3,
+    INCORRECT_PASSWORD = 4,
+    CREATE_CHARACTER = 5,
+    CREATE_CHARACTER_ERROR = 6,
+    TEMP_BANNED = 7,
+    PERM_BANNED = 8,
+    DUPLICATE_IP = 9,
+    INTEGRITY_CHECK_FAILED = 10,
+    RUN_AS_ADMIN = 11,
+    ACCOUNT_LOCKED = 12,
+    NOT_PURCHASED = 13,
 }

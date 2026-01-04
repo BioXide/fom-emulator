@@ -3,13 +3,22 @@
 Date: 2025-12-30
 Owner: ServerEmulator maintainer
 
+## Canonical Packet Truth (Read First)
+- **Docs/Packets is authoritative for login wire formats and sequence.**
+  - Docs/Packets/ID_LOGIN_REQUEST.md
+  - Docs/Packets/ID_LOGIN_REQUEST_RETURN.md
+  - Docs/Packets/ID_LOGIN.md
+  - Docs/Packets/ID_LOGIN_RETURN.md
+  - Docs/Packets/ID_LOGIN_TOKEN_CHECK.md
+- This plan predates those packet docs. Any references below to legacy 0x6C/0x6B login parsing or LSB-first decoding **must be treated as historical assumptions** and revalidated/updated against Docs/Packets before implementation.
+
 ## Mission
 Deliver cleaner boundaries between RakNet/LithTech parsing, deterministic login parsing, stable logging, and
 testable decoding paths without behavior regressions for handshake/login or logging output.
 
 ## Scope (In)
 - Non-destructive refactors only: move or extract helpers, keep logic intact.
-- Deterministic login parsing for 0x6C and 0x6B paths.
+- Deterministic login parsing for 0x6B (ID_LOGIN_REQUEST) and 0x6D (ID_LOGIN_REQUEST_RETURN).
 - Stable packet logging format and timestamp string format.
 - Unit tests driven by offline fixtures and brute-force alignment sweeps.
 
@@ -26,15 +35,15 @@ testable decoding paths without behavior regressions for handshake/login or logg
 - Raknet-js treated as vendor drop: touch only if unavoidable.
 
 ## Known-Good Invariants (Must Not Regress)
-- PacketHandler login decode of 0x6C (username/token) and 0x6B (blob decode path).
+- PacketHandler login decode of 0x6B (StringCompressor username + compressed clientVersion).
 - RakStringCompressor Huffman decoding with runtime table.
 - PacketLogger packet hex dump format and timestamp format.
 - Reliable response path uses PacketHandler.wrapReliable.
 
 ## Key Protocol Truths
-- 0x6C login decode succeeds via LSB-first scan of reliable inner payload, then LSB->MSB repack + Huffman decode.
-- MSB-only path on the same payload produces garbage; treat as negative case for 0x6C.
-- 53-byte login packet with 0x6C at inner offset 5 is a golden fixture.
+- 0x6B login decode uses RakNet StringCompressor (compressed length) followed by compressed u16 clientVersion (MSB bit order).
+- 0x6D login request return is status (compressed u8) + username (StringCompressor).
+- Legacy 0x6C Huffman rawlen path is deprecated and only for historical capture analysis.
 - Huffman table runtime truth: ServerEmulator/huffman_table_runtime.json.
  - fom_server.log must continue writing through the login packet (no log-stop regression).
 
@@ -78,7 +87,7 @@ testable decoding paths without behavior regressions for handshake/login or logg
 - Optional per-schema hooks: preDecode/postDecode for oddities (login, Lith subframes).
 
 ### Unit Test Targets
-- login_decode.test.ts (golden 0x6C fixture)
+- login_decode.test.ts (golden 0x6B fixture)
 - huffman_runtime_table.test.ts (runtime table path, deterministic output)
 - packet_logger_format.test.ts (timestamp + hex dump formatting, suppression behavior)
 - reliable_wrap_ack.test.ts (wrapReliable + buildAck stable output)

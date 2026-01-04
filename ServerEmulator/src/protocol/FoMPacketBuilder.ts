@@ -1,6 +1,6 @@
 import { OFFLINE_MESSAGE_ID, OPEN_CONNECTION_PROTOCOL_VERSION, RakNetMessageId } from './Constants';
 import RakBitStream from '../raknet-js/structures/BitStream';
-import { writeHuffmanStringRawLenBE } from './RakStringCompressor';
+import { writeCompressedString } from './RakStringCompressor';
 
 export interface RakPeerGuidSeed {
     guid: Buffer;
@@ -15,11 +15,9 @@ export interface OpenConnectionRequestOptions {
     seed?: Buffer;
 }
 
-export interface LoginRequestTextOptions {
+export interface LoginRequestOptions {
     username: string;
-    token: number;
-    includeTimestamp?: boolean;
-    timestampMs?: bigint;
+    clientVersion: number;
 }
 
 const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
@@ -127,18 +125,10 @@ export const buildOpenConnectionRequest = (options: OpenConnectionRequestOptions
     return buffer;
 };
 
-export const buildLoginRequestText = (options: LoginRequestTextOptions): Buffer => {
+export const buildLoginRequest = (options: LoginRequestOptions): Buffer => {
     const bs = new RakBitStream();
-    if (options.includeTimestamp) {
-        bs.writeByte(RakNetMessageId.ID_TIMESTAMP);
-        const ts = options.timestampMs ?? BigInt(Date.now());
-        bs.writeLongLong(ts);
-    }
-    bs.writeByte(RakNetMessageId.ID_LOGIN_REQUEST_TEXT);
-    bs.writeBit(false); // preFlag
-    writeHuffmanStringRawLenBE(bs, options.username ?? '', 2048);
-    bs.writeBit(false); // postFlag
-    const token = options.token & 0xffff;
-    bs.writeBits(token, 16);
+    bs.writeByte(RakNetMessageId.ID_LOGIN_REQUEST);
+    writeCompressedString(bs, options.username ?? '', 2048);
+    bs.writeCompressed(options.clientVersion & 0xffff, 2);
     return bs.data;
 };

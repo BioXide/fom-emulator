@@ -27,6 +27,7 @@ import {
     ConnectionResponseFlag,
     RakNetMessageId,
     LithTechMessageId,
+    LoginRequestReturnStatus,
     WORLD_SERVER_PASSWORD,
     SEQUENCE_MASK,
     DEFAULT_PORT,
@@ -1281,7 +1282,11 @@ export class PacketHandler {
             console.log(
                 `[PacketHandler] FORCE_LOGIN_ON_FIRST_LITH sending login response to ${connection.key}`,
             );
-            const login = this.loginHandler.buildLoginResponse(true, this.worldIp, this.worldPort);
+            const user = connection.pendingLoginUser || connection.username || 'unknown';
+            const login = this.loginHandler.buildLoginRequestReturn(
+                LoginRequestReturnStatus.SUCCESS,
+                user,
+            );
             return this.wrapReliable(login, connection);
         }
 
@@ -1376,8 +1381,11 @@ export class PacketHandler {
     private scanLithTechFrames(buffer: Buffer, connection: Connection): void {
         if (!this.lithDebugRaw && !this.verbose && !this.shouldLogRaw(buffer.length)) return;
         const targets = [
-            RakNetMessageId.ID_LOGIN_REQUEST_TEXT,
+            RakNetMessageId.ID_LOGIN_REQUEST,
             RakNetMessageId.ID_LOGIN_REQUEST_RETURN,
+            RakNetMessageId.ID_LOGIN,
+            RakNetMessageId.ID_LOGIN_RETURN,
+            RakNetMessageId.ID_LOGIN_TOKEN_CHECK,
         ];
         const maxHits = 6;
         let hits = 0;
@@ -1541,10 +1549,13 @@ export class PacketHandler {
 
     // Search payload for embedded login frames and attempt decode.
     private scanNestedFrames(payload: Buffer, connection: Connection, tag: string): void {
-        // Look for 0x6c/0x6d inside payload and attempt nested decode from nearby offsets.
+        // Look for login packets inside payload and attempt nested decode from nearby offsets.
         const targets = [
-            RakNetMessageId.ID_LOGIN_REQUEST_TEXT,
+            RakNetMessageId.ID_LOGIN_REQUEST,
             RakNetMessageId.ID_LOGIN_REQUEST_RETURN,
+            RakNetMessageId.ID_LOGIN,
+            RakNetMessageId.ID_LOGIN_RETURN,
+            RakNetMessageId.ID_LOGIN_TOKEN_CHECK,
         ];
         for (let i = 0; i < payload.length; i += 1) {
             if (!targets.includes(payload[i])) continue;
@@ -2511,8 +2522,9 @@ export class PacketHandler {
             return null;
         }
         const targets = [
-            RakNetMessageId.ID_LOGIN_REQUEST_TEXT,
+            RakNetMessageId.ID_LOGIN_REQUEST,
             RakNetMessageId.ID_LOGIN,
+            RakNetMessageId.ID_LOGIN_TOKEN_CHECK,
             RakNetMessageId.ID_TIMESTAMP,
         ];
         const maxHits = 6;
