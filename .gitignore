@@ -64,7 +64,6 @@
 !/Client/Client_FoM/fom_hook.ini
 !/Client/Client_FoM/fom_public.key
 !/Client/Client_FoM/master.cfg
-!/Client/Client_FoM/OpenAL32.dll
 !/Client/Client_FoM/**/*.i64
 !/Client/Client_FoM/**/*.idb
 !/Client/Client_TS/**
