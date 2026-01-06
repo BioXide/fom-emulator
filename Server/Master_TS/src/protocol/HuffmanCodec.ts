@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { debug as logDebug, warn as logWarn } from '../logging/Logger';
 
 interface HuffmanCode {
     bits: number[];
@@ -24,11 +25,12 @@ interface HuffmanNode {
     right?: HuffmanNode;
 }
 
-// Cache
+// Cache (initialized on first use)
 let cachedCodes: HuffmanCode[] | null = null;
 let cachedDecodeTree: HuffmanNode | null = null;
 
 function resolveTablePath(): string | null {
+    // Prefer explicit env override; fall back to workspace paths.
     const candidates = [
         process.env.FOM_HUFFMAN_TABLE,
         path.resolve(process.cwd(), 'huffman_table_runtime.json'),
@@ -63,7 +65,7 @@ function loadRuntimeCodes(): HuffmanCode[] | null {
             }
             codes[sym] = { bits: bits.slice(0, bitlen), bitLength: bitlen };
         }
-        console.log(`[HuffmanCodec] Loaded table from ${tablePath}`);
+        logDebug(`[HuffmanCodec] Loaded table from ${tablePath}`);
         return codes;
     } catch {
         return null;
@@ -71,6 +73,7 @@ function loadRuntimeCodes(): HuffmanCode[] | null {
 }
 
 function getCodes(): HuffmanCode[] {
+    // Lazily load and cache Huffman codes.
     if (!cachedCodes) {
         cachedCodes = loadRuntimeCodes();
         if (!cachedCodes) {
@@ -81,6 +84,7 @@ function getCodes(): HuffmanCode[] {
 }
 
 function buildDecodeTree(): HuffmanNode {
+    // Build a binary decode tree from the canonical code table.
     const root: HuffmanNode = { symbol: null, weight: 0 };
     const codes = getCodes();
 
@@ -105,6 +109,7 @@ function buildDecodeTree(): HuffmanNode {
 }
 
 function getDecodeTree(): HuffmanNode {
+    // Build once and reuse for decoding.
     if (!cachedDecodeTree) {
         cachedDecodeTree = buildDecodeTree();
     }
@@ -112,13 +117,13 @@ function getDecodeTree(): HuffmanNode {
 }
 
 // =============================================================================
-// RakBitStream - MSB-first BitStream compatible with RakNet StringCompressor
+// MsbBitStream - MSB-first BitStream compatible with RakNet StringCompressor
 // =============================================================================
 
 /**
  * MSB-first BitStream for RakNet packet serialization
  */
-export class RakBitStream {
+export class MsbBitStream {
     readonly bitOrder: 'msb' = 'msb';
     private buffer: Buffer;
     private byteCount: number;
@@ -167,6 +172,7 @@ export class RakBitStream {
     }
 
     readBit(): number {
+        // Read MSB-first bit from the current byte.
         if (this.readBytePosition >= this.byteCount) {
             this.writeBytePosition = this.readBytePosition;
             this.writeByte(0);
@@ -182,6 +188,7 @@ export class RakBitStream {
     }
 
     writeBit(b: boolean): void {
+        // Write MSB-first bit into the current byte.
         if (this.writeBitPosition === 7) {
             const old = this.buffer;
             this.buffer = Buffer.alloc(this.writeBytePosition + 1);
@@ -274,9 +281,10 @@ export class RakBitStream {
      * Read RakNet compressed data
      * @param size Number of bytes in the uncompressed value
      */
-    readCompressed(size: number): RakBitStream {
+    readCompressed(size: number): MsbBitStream {
+        // RakNet compressed int format (MSB-first).
         let currentByte = size - 1;
-        const ret = new RakBitStream();
+        const ret = new MsbBitStream();
 
         while (currentByte > 0) {
             const b = this.readBit();
@@ -311,6 +319,7 @@ export class RakBitStream {
      * @param size Number of bytes to write it in
      */
     writeCompressed(data: number, size: number): void {
+        // RakNet compressed int format (MSB-first).
         let currentByte = size - 1;
         const mask = [
             0xff, 0xff00, 0xff0000, 0xff000000, 0xff00000000, 0xff0000000000, 0xff000000000000,
@@ -341,7 +350,7 @@ export class RakBitStream {
     /**
      * Copy bits from another BitStream
      */
-    writeBitStream(bs: RakBitStream): void {
+    writeBitStream(bs: MsbBitStream): void {
         bs.resetRead();
         const bitCount = bs.bits();
         for (let i = 0; i < bitCount; i++) {
@@ -380,15 +389,16 @@ export class RakBitStream {
 
 /**
  * Decode Huffman bits directly from a stream
- * @param stream The RakBitStream to read from
+ * @param stream The MsbBitStream to read from
  * @param bitCount Number of bits to read
  * @param maxLen Maximum output string length
  */
 export function decodeHuffmanBitsFromStream(
-    stream: RakBitStream,
+    stream: MsbBitStream,
     bitCount: number,
     maxLen: number = 2048,
 ): string {
+    // Decode Huffman symbols directly from a bit stream.
     if (bitCount <= 0) return '';
 
     const root = getDecodeTree();
@@ -417,10 +427,11 @@ export function decodeHuffmanBitsFromStream(
 // =============================================================================
 
 export function readByteArrayCompressed(
-    stream: RakBitStream,
+    stream: MsbBitStream,
     bitLength: number,
     unsigned: boolean = true,
 ): Buffer {
+    // FoM/LithTech "byte-array compressed" format.
     const byteCount = bitLength >> 3;
     if (byteCount <= 0) return Buffer.alloc(0);
 
@@ -460,7 +471,7 @@ export function readByteArrayCompressed(
     return out;
 }
 
-export function readCompressedUIntBE(stream: RakBitStream, byteCount: number): number {
+export function readCompressedUIntBE(stream: MsbBitStream, byteCount: number): number {
     const buf = readByteArrayCompressed(stream, byteCount * 8, true);
     let value = 0;
     for (let i = 0; i < buf.length; i++) {
@@ -470,11 +481,12 @@ export function readCompressedUIntBE(stream: RakBitStream, byteCount: number): n
 }
 
 export function writeByteArrayCompressed(
-    stream: RakBitStream,
+    stream: MsbBitStream,
     data: Uint8Array,
     bitLength: number,
     unsigned: boolean = true,
 ): void {
+    // FoM/LithTech "byte-array compressed" format.
     const byteCount = bitLength >> 3;
     if (byteCount <= 0) return;
 
@@ -517,7 +529,7 @@ export function writeByteArrayCompressed(
     }
 }
 
-export function writeCompressedUIntBE(stream: RakBitStream, value: number, byteCount: number): void {
+export function writeCompressedUIntBE(stream: MsbBitStream, value: number, byteCount: number): void {
     const buf = Buffer.alloc(byteCount, 0);
     let v = value >>> 0;
     for (let i = byteCount - 1; i >= 0; i--) {
@@ -527,16 +539,16 @@ export function writeCompressedUIntBE(stream: RakBitStream, value: number, byteC
     writeByteArrayCompressed(stream, buf, byteCount * 8, true);
 }
 
-function writeCode(stream: RakBitStream, code: HuffmanCode, bitLimit?: number): void {
+function writeCode(stream: MsbBitStream, code: HuffmanCode, bitLimit?: number): void {
     const limit = bitLimit ?? code.bitLength;
     for (let i = 0; i < limit; i++) {
         stream.writeBit(code.bits[i] === 1);
     }
 }
 
-function encodeStringToBitStream(value: string, maxLen: number): RakBitStream {
+function encodeStringToBitStream(value: string, maxLen: number): MsbBitStream {
     const codes = getCodes();
-    const temp = new RakBitStream();
+    const temp = new MsbBitStream();
 
     const trimmed = sanitizeString(value, maxLen);
 
@@ -563,7 +575,7 @@ function encodeStringToBitStream(value: string, maxLen: number): RakBitStream {
     return temp;
 }
 
-function decodeHuffmanBits(stream: RakBitStream, bitCount: number, maxLen: number): string {
+function decodeHuffmanBits(stream: MsbBitStream, bitCount: number, maxLen: number): string {
     if (bitCount <= 0) return '';
 
     const root = getDecodeTree();
@@ -596,10 +608,11 @@ function decodeHuffmanBits(stream: RakBitStream, bitCount: number, maxLen: numbe
  * This is the format used by RakNet's StringCompressor::EncodeString
  */
 export function writeCompressedString(
-    stream: RakBitStream,
+    stream: MsbBitStream,
     value: string,
     maxLen: number = 2048,
 ): void {
+    // RakNet StringCompressor format (compressed u32 bit count prefix).
     const temp = encodeStringToBitStream(value ?? '', maxLen);
     const bitCount = temp.bits();
     stream.writeCompressed(bitCount, 4);
@@ -612,7 +625,8 @@ export function writeCompressedString(
  * Read a Huffman-compressed string with RakNet compressed u32 bit count prefix
  * This is the format used by RakNet's StringCompressor::DecodeString
  */
-export function readCompressedString(stream: RakBitStream, maxLen: number = 2048): string {
+export function readCompressedString(stream: MsbBitStream, maxLen: number = 2048): string {
+    // RakNet StringCompressor format (compressed u32 bit count prefix).
     const countStream = stream.readCompressed(4);
     const bitCount = countStream.readLong();
     if (bitCount <= 0) return '';
@@ -635,7 +649,8 @@ export function decodeHuffmanStringRawLenBE(
     offset: number,
     maxLen = 2048,
 ): { value: string; bytesRead: number } {
-    const stream = new RakBitStream(Buffer.from(data.slice(offset)));
+    // Raw U32BE length prefix with Huffman bits.
+    const stream = new MsbBitStream(Buffer.from(data.slice(offset)));
     const b0 = stream.readByte();
     const b1 = stream.readByte();
     const b2 = stream.readByte();
@@ -658,6 +673,7 @@ export function decodeHuffmanStringRawLenBE(
  * Encode a string using Huffman with raw U32BE length prefix
  */
 export function encodeHuffmanStringRawLenBE(value: string, maxLen = 2048): Buffer {
+    // Raw U32BE length prefix with Huffman bits.
     const temp = encodeStringToBitStream(value ?? '', maxLen);
     const bitCount = temp.bits();
 
@@ -673,10 +689,11 @@ export function encodeHuffmanStringRawLenBE(value: string, maxLen = 2048): Buffe
  * Write a Huffman-compressed string with raw U32BE length prefix to a stream
  */
 export function writeHuffmanStringRawLenBE(
-    stream: RakBitStream,
+    stream: MsbBitStream,
     value: string,
     maxLen: number = 2048,
 ): void {
+    // Raw U32BE length prefix with Huffman bits.
     const temp = encodeStringToBitStream(value ?? '', maxLen);
     const bitCount = temp.bits();
 
@@ -694,7 +711,8 @@ export function writeHuffmanStringRawLenBE(
 /**
  * Read a Huffman-compressed string with raw U32BE length prefix from a stream
  */
-export function readHuffmanStringRawLenBE(stream: RakBitStream, maxLen: number = 2048): string {
+export function readHuffmanStringRawLenBE(stream: MsbBitStream, maxLen: number = 2048): string {
+    // Raw U32BE length prefix with Huffman bits.
     const b0 = stream.readByte();
     const b1 = stream.readByte();
     const b2 = stream.readByte();
@@ -713,7 +731,8 @@ export function readHuffmanStringRawLenBE(stream: RakBitStream, maxLen: number =
 // BitStream Compressed U32 BitCount Format (FoM client)
 // =============================================================================
 
-export function readHuffmanStringCompressedU32(stream: RakBitStream, maxLen: number = 2048): string {
+export function readHuffmanStringCompressedU32(stream: MsbBitStream, maxLen: number = 2048): string {
+    // FoM client format: compressed U32 bit count prefix (byte-array compressed).
     const bitCount = readCompressedUIntBE(stream, 4);
     if (bitCount <= 0) return '';
     if (maxLen > 0 && bitCount > maxLen * 16) {
@@ -723,10 +742,11 @@ export function readHuffmanStringCompressedU32(stream: RakBitStream, maxLen: num
 }
 
 export function writeHuffmanStringCompressedU32(
-    stream: RakBitStream,
+    stream: MsbBitStream,
     value: string,
     maxLen: number = 2048,
 ): void {
+    // FoM client format: compressed U32 bit count prefix (byte-array compressed).
     const temp = encodeStringToBitStream(value ?? '', maxLen);
     const bitCount = temp.bits();
     writeCompressedUIntBE(stream, bitCount >>> 0, 4);
@@ -744,6 +764,7 @@ export function writeHuffmanStringCompressedU32(
  * Handles timestamp prefix if present
  */
 export function extractUsernameFrom6C(data: Uint8Array): string {
+    // Convenience helper for 0x6C packets; tries RakNet or raw U32BE formats.
     let offset = 1; // Skip packet ID (0x6C)
 
     // Check for timestamp prefix (0x19)
@@ -753,7 +774,7 @@ export function extractUsernameFrom6C(data: Uint8Array): string {
 
     try {
         // Try RakNet StringCompressor format first
-        const stream = new RakBitStream(Buffer.from(data.slice(offset)));
+        const stream = new MsbBitStream(Buffer.from(data.slice(offset)));
         return readCompressedString(stream, 2048) || 'unknown';
     } catch {
         try {
@@ -761,7 +782,7 @@ export function extractUsernameFrom6C(data: Uint8Array): string {
             const { value } = decodeHuffmanStringRawLenBE(data, offset);
             return value || 'unknown';
         } catch {
-            console.warn('[HuffmanCodec] Failed to decode username');
+            logWarn('[HuffmanCodec] Failed to decode username');
             return 'unknown';
         }
     }
@@ -780,5 +801,6 @@ export function sanitizeString(value: string, maxLen: number): string {
     return raw;
 }
 
-// Re-export RakBitStream as default for V1 compatibility
-export default RakBitStream;
+export { MsbBitStream as RakBitStream };
+// Re-export MsbBitStream as default for V1 compatibility
+export default MsbBitStream;

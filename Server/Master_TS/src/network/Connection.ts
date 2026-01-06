@@ -6,6 +6,7 @@
  */
 
 import type { RakSystemAddress } from '../bindings/raknet';
+import { addressToKey, addressToString } from '../net/address';
 import { CONNECTION_TIMEOUT, SEQUENCE_MASK } from '../protocol/Constants';
 
 export enum ConnectionState {
@@ -130,14 +131,7 @@ export class Connection {
     constructor(id: number, address: RakSystemAddress) {
         this.id = id;
         this.address = address;
-        // Convert binary address to dotted notation for logging
-        const parts = [
-            (address.binaryAddress >> 0) & 0xff,
-            (address.binaryAddress >> 8) & 0xff,
-            (address.binaryAddress >> 16) & 0xff,
-            (address.binaryAddress >> 24) & 0xff,
-        ];
-        this.key = `${parts.join('.')}:${address.port}`;
+        this.key = addressToString(address);
         this.createdAt = new Date();
     }
 
@@ -150,29 +144,35 @@ export class Connection {
     }
 
     updateActivity(): void {
+        // Touch last activity for timeout tracking.
         this.lastActivity = Date.now();
     }
 
     isAuthenticated(): boolean {
+        // Treat either phase or explicit flag as authenticated.
         return this.loginPhase >= LoginPhase.AUTHENTICATED || this.authenticated;
     }
 
     isInWorld(): boolean {
+        // Terminal state for world session.
         return this.loginPhase === LoginPhase.IN_WORLD;
     }
 
     getNextSendSequence(): number {
+        // Wrap sequence to 13-bit mask for legacy compatibility.
         const seq = this.sendSequence;
         this.sendSequence = (this.sendSequence + 1) & SEQUENCE_MASK;
         return seq;
     }
 
     isExpectedSequence(seq: number): boolean {
+        // Expect strictly incremented sequence numbers.
         const expected = (this.receiveSequence + 1) & SEQUENCE_MASK;
         return seq === expected;
     }
 
     updateReceiveSequence(seq: number): void {
+        // Advance receive sequence tracking.
         this.receiveSequence = seq;
     }
 
@@ -193,6 +193,7 @@ export class ConnectionManager {
      * Get or create a connection for an address
      */
     getOrCreate(address: RakSystemAddress): Connection {
+        // Primary lookup keyed by ip:port for log clarity.
         const key = this.addressToKey(address);
         let conn = this.connections.get(key);
         if (!conn) {
@@ -223,6 +224,7 @@ export class ConnectionManager {
      * Remove a connection
      */
     remove(address: RakSystemAddress): void {
+        // Remove from both address and ID indices.
         const key = this.addressToKey(address);
         const conn = this.connections.get(key);
         if (conn) {
@@ -269,6 +271,6 @@ export class ConnectionManager {
     }
 
     private addressToKey(address: RakSystemAddress): string {
-        return `${address.binaryAddress}:${address.port}`;
+        return addressToKey(address);
     }
 }

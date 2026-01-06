@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as util from 'util';
+import { isLoginPacketId } from '../protocol/Constants';
+import { getPacketName } from '../protocol/PacketNames';
 
 export enum PacketDirection {
     INCOMING = 'RECV',
@@ -258,6 +260,7 @@ export class PacketLogger {
     log(packet: LoggedPacket): boolean {
         this.packetCount++;
 
+        // Format once for file output; console output handled separately.
         const entry = this.formatPacket(packet);
 
         const consoleDecision = this.shouldLogConsole(packet);
@@ -347,17 +350,11 @@ export class PacketLogger {
         const signature = this.consoleSignature(packet);
         if (!this.logToConsole || this.consoleMode === 'off')
             return { log: false, suppressed: 0, signature };
+        // Interpret ID as raw payload or inside RakNet reliable wrapper.
         const effectiveId = this.getEffectiveId(packet);
         const forceLogin =
             this.containsLoginMarker(packet.data) ||
-            effectiveId === 0x6c ||
-            effectiveId === 0x6d ||
-            effectiveId === 0x6e ||
-            effectiveId === 0x6f ||
-            effectiveId === 0x70 ||
-            effectiveId === 0x72 ||
-            effectiveId === 0x73 ||
-            effectiveId === 0x7b;
+            (effectiveId !== null && isLoginPacketId(effectiveId));
         if (this.ignorePacketIds && effectiveId !== null && this.ignorePacketIds.has(effectiveId)) {
             return { log: false, suppressed: 0, signature };
         }
@@ -395,6 +392,7 @@ export class PacketLogger {
     private shouldLogFile(packet: LoggedPacket): boolean {
         if (!this.logToFile || !this.logFile) return false;
         const effectiveId = this.getEffectiveId(packet);
+        // File logging respects the same allow/ignore filters as console.
         if (this.ignorePacketIds && effectiveId !== null && this.ignorePacketIds.has(effectiveId))
             return false;
         if (this.filePacketIds) {
@@ -407,23 +405,13 @@ export class PacketLogger {
     private shouldFlush(packet: LoggedPacket): boolean {
         if (this.flushMode === 'always') return true;
         if (this.flushMode !== 'login') return false;
+        // Flush on login markers to capture critical handshake in logs.
         return this.containsLoginMarker(packet.data);
     }
 
     private containsLoginMarker(buffer: Buffer): boolean {
         for (let i = 0; i < buffer.length; i += 1) {
-            const b = buffer[i];
-            if (
-                b === 0x6c ||
-                b === 0x6d ||
-                b === 0x6e ||
-                b === 0x6f ||
-                b === 0x70 ||
-                b === 0x72 ||
-                b === 0x73 ||
-                b === 0x7b
-            )
-                return true;
+            if (isLoginPacketId(buffer[i])) return true;
         }
         return false;
     }
@@ -454,6 +442,7 @@ export class PacketLogger {
         if (this.assumePayload) {
             return firstByte;
         }
+        // RakNet reliable packets wrap the inner ID at offset 17.
         if ((firstByte & 0x40) === 0x40 && (firstByte & 0x80) === 0 && packet.data.length >= 18) {
             return packet.data[17];
         }
@@ -518,6 +507,7 @@ export class PacketLogger {
 
     logAnalysis(packet: LoggedPacket, consoleLogged: boolean = true): void {
         if (!this.analysisEnabled || !this.logToConsole || !consoleLogged) return;
+        // Light-weight console hints for protocol triage.
         const data = packet.data;
         if (data.length < 1) return;
 
@@ -526,34 +516,15 @@ export class PacketLogger {
 
         if (this.assumePayload) {
             const packetId = firstByte;
-            const knownPackets: Record<number, string> = {
-                0x00: 'ID_INTERNAL_PING',
-                0x01: 'ID_PING',
-                0x03: 'ID_CONNECTED_PONG',
-                0x04: 'ID_CONNECTION_REQUEST',
-                0x09: 'ID_OPEN_CONNECTION_REQUEST',
-                0x0a: 'ID_OPEN_CONNECTION_REPLY',
-                0x0e: 'ID_CONNECTION_REQUEST_ACCEPTED',
-                0x13: 'ID_DISCONNECTION_NOTIFICATION',
-                0x14: 'ID_CONNECTION_LOST',
-                0x6c: 'ID_LOGIN_REQUEST',
-                0x6d: 'ID_LOGIN_REQUEST_RETURN',
-                0x6e: 'ID_LOGIN',
-                0x6f: 'ID_LOGIN_RETURN',
-                0x70: 'ID_LOGIN_TOKEN_CHECK',
-                0x72: 'ID_WORLD_LOGIN',
-                0x73: 'ID_WORLD_LOGIN_RETURN',
-                0x7b: 'ID_WORLD_SELECT',
-            };
-            const packetName = knownPackets[packetId] || `UNKNOWN (0x${packetId.toString(16)})`;
-            analysis.push(`  \x1b[35m→ Packet ID: ${packetName}\x1b[0m`);
+            const packetName = getPacketName(packetId);
+            analysis.push(`  \x1b[35m-> Packet ID: ${packetName}\x1b[0m`);
             console.log(analysis.join('\n'));
             return;
         }
 
         const firstDword = data.readUInt32LE(0);
         if (firstDword === 0x9919d9c7) {
-            analysis.push('  \x1b[35m→ Connection Magic detected (0x9919D9C7)\x1b[0m');
+            analysis.push('  \x1b[35m-> Connection Magic detected (0x9919D9C7)\x1b[0m');
             if (data.length > 4) {
                 const typeBits = data[4] & 0x07;
                 const typeNames: Record<number, string> = {
@@ -562,61 +533,36 @@ export class PacketLogger {
                     3: 'CONNECT_RESPONSE',
                 };
                 analysis.push(
-                    `  \x1b[35m→ Request Type: ${typeBits} (${typeNames[typeBits] || 'UNKNOWN'})\x1b[0m`,
+                    `  \x1b[35m-> Request Type: ${typeBits} (${typeNames[typeBits] || 'UNKNOWN'})\x1b[0m`,
                 );
             }
         } else if ((firstByte & 0x80) === 0x80 && (firstByte & 0x40) === 0) {
-            analysis.push('  \x1b[36m→ ACK Packet (0x80)\x1b[0m');
+            analysis.push('  \x1b[36m-> ACK Packet (0x80)\x1b[0m');
             if (data.length >= 17) {
                 const timestamp = data.readUInt32LE(5);
                 const msgNum = data.readUInt32BE(13);
-                analysis.push(`  \x1b[36m→ Timestamp: ${timestamp}, MsgNum: ${msgNum}\x1b[0m`);
+                analysis.push(`  \x1b[36m-> Timestamp: ${timestamp}, MsgNum: ${msgNum}\x1b[0m`);
             }
         } else if ((firstByte & 0x40) === 0x40) {
-            analysis.push('  \x1b[33m→ RELIABLE Packet\x1b[0m');
+            analysis.push('  \x1b[33m-> RELIABLE Packet\x1b[0m');
             if (data.length >= 18) {
                 const timestamp = data.readUInt32LE(5);
                 const orderingInfo = data.readUInt32BE(9);
                 const lengthInfo = data.readUInt32BE(13);
                 const innerMsgId = data[17];
-
-                const knownInner: Record<number, string> = {
-                    0x04: 'ID_CONNECTION_REQUEST',
-                    0x0e: 'ID_CONNECTION_REQUEST_ACCEPTED',
-                    0x11: 'ID_NEW_INCOMING_CONNECTION',
-                };
-                const innerName = knownInner[innerMsgId] || `0x${innerMsgId.toString(16)}`;
+                const innerName = getPacketName(innerMsgId);
 
                 analysis.push(
-                    `  \x1b[33m→ Timestamp: ${timestamp}, Ordering: 0x${orderingInfo.toString(16)}\x1b[0m`,
+                    `  \x1b[33m-> Timestamp: ${timestamp}, Ordering: 0x${orderingInfo.toString(16)}\x1b[0m`,
                 );
                 analysis.push(
-                    `  \x1b[33m→ LengthInfo: 0x${lengthInfo.toString(16)}, Inner: ${innerName}\x1b[0m`,
+                    `  \x1b[33m-> LengthInfo: 0x${lengthInfo.toString(16)}, Inner: ${innerName}\x1b[0m`,
                 );
             }
         } else {
             const packetId = data[0];
-            const knownPackets: Record<number, string> = {
-                0x00: 'ID_INTERNAL_PING',
-                0x01: 'ID_PING',
-                0x03: 'ID_CONNECTED_PONG',
-                0x04: 'ID_CONNECTION_REQUEST',
-                0x09: 'ID_OPEN_CONNECTION_REQUEST',
-                0x0a: 'ID_OPEN_CONNECTION_REPLY',
-                0x0e: 'ID_CONNECTION_REQUEST_ACCEPTED',
-                0x13: 'ID_DISCONNECTION_NOTIFICATION',
-                0x14: 'ID_CONNECTION_LOST',
-                0x6c: 'ID_LOGIN_REQUEST',
-                0x6d: 'ID_LOGIN_REQUEST_RETURN',
-                0x6e: 'ID_LOGIN',
-                0x6f: 'ID_LOGIN_RETURN',
-                0x70: 'ID_LOGIN_TOKEN_CHECK',
-                0x72: 'ID_WORLD_LOGIN',
-                0x73: 'ID_WORLD_LOGIN_RETURN',
-                0x7b: 'ID_WORLD_SELECT',
-            };
-            const packetName = knownPackets[packetId] || `UNKNOWN (0x${packetId.toString(16)})`;
-            analysis.push(`  \x1b[35m→ Packet ID: ${packetName}\x1b[0m`);
+            const packetName = getPacketName(packetId);
+            analysis.push(`  \x1b[35m-> Packet ID: ${packetName}\x1b[0m`);
         }
 
         if (analysis.length > 0 && this.logToConsole) {

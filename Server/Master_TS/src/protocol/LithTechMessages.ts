@@ -7,7 +7,7 @@
  * Based on legacy TS emulator implementation patterns.
  */
 
-import { RakBitStream } from './HuffmanCodec';
+import { MsbBitStream } from './HuffmanCodec';
 
 // LithTech message IDs
 export const LithTechMessageId = {
@@ -32,6 +32,7 @@ class LithBitWriter {
     private currentByte = 0;
     private bitPos = 7; // MSB first
 
+    // Write a single MSB-first bit into the output buffer.
     writeBit(b: number): void {
         this.currentByte |= (b & 1) << this.bitPos;
         if (--this.bitPos < 0) {
@@ -41,6 +42,7 @@ class LithBitWriter {
         }
     }
 
+    // Write a fixed-width MSB-first bit field.
     writeBits(value: number, count: number): void {
         for (let i = count - 1; i >= 0; i--) {
             this.writeBit((value >> i) & 1);
@@ -57,12 +59,14 @@ class LithBitWriter {
         }
     }
 
+    // Write float as LE bytes (LithTech payload format).
     writeFloat(n: number): void {
         const buf = Buffer.alloc(4);
         buf.writeFloatLE(n, 0);
         this.writeBytes(buf);
     }
 
+    // Flush partial byte and return packed buffer.
     toBuffer(): Buffer {
         const result = [...this.buffer];
         if (this.bitPos < 7) {
@@ -87,6 +91,7 @@ interface SubMessage {
  * - Then remaining bits one at a time with continuation
  */
 function writeSizeIndicator(writer: LithBitWriter, size: number): void {
+    // Size encoding mirrors LithTech bit-size indicator.
     // Write lower 7 bits
     writer.writeBits(size & 0x7f, 7);
 
@@ -122,6 +127,7 @@ function writeSizeIndicator(writer: LithBitWriter, size: number): void {
  * Write raw bits from buffer to writer
  */
 function writeBitsFromBuffer(writer: LithBitWriter, buf: Buffer, bitCount: number): void {
+    // Copy an arbitrary number of bits from a byte buffer.
     let bitsWritten = 0;
     for (let i = 0; i < buf.length && bitsWritten < bitCount; i++) {
         const byte = buf[i];
@@ -139,6 +145,7 @@ export function buildLithTechGuaranteedPacket(
     sequence: number,
     subMessages: SubMessage[],
 ): Buffer {
+    // Compose LithTech guaranteed packet: sequence + submessage list.
     const writer = new LithBitWriter();
 
     // 13-bit sequence number
@@ -237,6 +244,7 @@ export function buildWorldLoginBurst(
     objectId: number,
     worldId: number,
 ): Buffer {
+    // Initial world handshake burst expected by FoM client.
     const subMessages: SubMessage[] = [
         buildProtocolVersionPayload(),
         buildYourIdPayload(clientId),
@@ -250,7 +258,7 @@ export function buildWorldLoginBurst(
  * Build unguaranteed update heartbeat (MSG_UNGUARANTEEDUPDATE = 10)
  */
 export function buildUnguaranteedUpdate(timestamp: number): Buffer {
-    const writer = new RakBitStream();
+    const writer = new MsbBitStream();
     writer.writeByte(LithTechMessageId.MSG_UNGUARANTEEDUPDATE);
     writer.writeLong(timestamp);
     return writer.data;

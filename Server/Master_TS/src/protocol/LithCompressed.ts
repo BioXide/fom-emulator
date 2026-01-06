@@ -5,7 +5,7 @@
  * Uses LSB BitStreamWriter for game layer serialization.
  */
 
-import { BitStreamWriter } from './BitStream';
+import { LsbBitStreamWriter } from './BitStream';
 
 const clampU32 = (value: number): number => value >>> 0;
 
@@ -16,13 +16,14 @@ const clampU32 = (value: number): number => value >>> 0;
  * @param byteCount Number of bytes (1-4)
  */
 export const writeCompressedUInt = (
-    writer: BitStreamWriter,
+    writer: LsbBitStreamWriter,
     value: number,
     byteCount: number,
 ): void => {
     const clamped = clampU32(value);
     const bytes = Math.max(1, Math.min(4, byteCount));
 
+    // Emit leading zero flags until the first non-zero byte.
     for (let i = bytes - 1; i >= 1; i -= 1) {
         const b = (clamped >>> (i * 8)) & 0xff;
         if (b === 0) {
@@ -36,6 +37,7 @@ export const writeCompressedUInt = (
         return;
     }
 
+    // Low-byte nibble compression for small values.
     const low = clamped & 0xff;
     if ((low & 0xf0) === 0) {
         writer.writeBits(1, 1);
@@ -49,28 +51,28 @@ export const writeCompressedUInt = (
 /**
  * Write compressed u8 (1 byte)
  */
-export const writeU8c = (writer: BitStreamWriter, value: number): void => {
+export const writeU8c = (writer: LsbBitStreamWriter, value: number): void => {
     writeCompressedUInt(writer, value & 0xff, 1);
 };
 
 /**
  * Write compressed u16 (2 bytes)
  */
-export const writeU16c = (writer: BitStreamWriter, value: number): void => {
+export const writeU16c = (writer: LsbBitStreamWriter, value: number): void => {
     writeCompressedUInt(writer, value & 0xffff, 2);
 };
 
 /**
  * Write compressed u32 (4 bytes)
  */
-export const writeU32c = (writer: BitStreamWriter, value: number): void => {
+export const writeU32c = (writer: LsbBitStreamWriter, value: number): void => {
     writeCompressedUInt(writer, clampU32(value), 4);
 };
 
 /**
  * Write a list with u16 count prefix and u32 compressed entries
  */
-export const writeListU16CountU32c = (writer: BitStreamWriter, values: number[]): void => {
+export const writeListU16CountU32c = (writer: LsbBitStreamWriter, values: number[]): void => {
     const list = values ?? [];
     writeU16c(writer, list.length);
     for (const entry of list) {
@@ -81,7 +83,7 @@ export const writeListU16CountU32c = (writer: BitStreamWriter, values: number[])
 /**
  * Write a list with u8 count prefix and u32 compressed entries
  */
-export const writeListU8CountU32c = (writer: BitStreamWriter, values: number[]): void => {
+export const writeListU8CountU32c = (writer: LsbBitStreamWriter, values: number[]): void => {
     const list = values ?? [];
     writeU8c(writer, list.length);
     for (const entry of list) {

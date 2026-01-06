@@ -70,18 +70,35 @@ export enum RakNetMessageId {
     ID_FILE_LIST_TRANSFER_HEADER = 0x32,
     ID_FILE_LIST_TRANSFER_RESPONSE = 0x36,
 
-    // Game-specific (FoM) - Login flow
-    ID_LOGIN_REQUEST = 0x6c,        // 108 - Login request (username + version)
-    ID_LOGIN_REQUEST_RETURN = 0x6d, // 109 - Server response to login request
-    ID_LOGIN = 0x6e,                // 110 - Full login auth packet
-    ID_LOGIN_RETURN = 0x6f,         // 111 - Server response to login auth
-    ID_LOGIN_TOKEN_CHECK = 0x70,    // 112 - Token validation (bidirectional)
-    ID_WORLD_LOGIN = 0x72,          // 114 - World server login
-    ID_WORLD_LOGIN_RETURN = 0x73,   // 115 - World server response
-    ID_WORLD_SELECT = 0x7b,         // 123 - World selection
+    // Game-specific (FoM) - Login flow (Docs/Packets/*.md)
+    ID_LOGIN_REQUEST = 0x6c,        // 108 - Docs/Packets/ID_LOGIN_REQUEST.md
+    ID_LOGIN_REQUEST_RETURN = 0x6d, // 109 - Docs/Packets/ID_LOGIN_REQUEST_RETURN.md
+    ID_LOGIN = 0x6e,                // 110 - Docs/Packets/ID_LOGIN.md
+    ID_LOGIN_RETURN = 0x6f,         // 111 - Docs/Packets/ID_LOGIN_RETURN.md
+    ID_LOGIN_TOKEN_CHECK = 0x70,    // 112 - Docs/Packets/ID_LOGIN_TOKEN_CHECK.md
+    ID_WORLD_LOGIN = 0x72,          // 114 - Docs/Packets/ID_WORLD_LOGIN.md
+    ID_WORLD_LOGIN_RETURN = 0x73,   // 115 - Docs/Packets/ID_WORLD_LOGIN_RETURN.md
+    ID_WORLD_SELECT = 0x7b,         // 123 - Docs/Packets/ID_WORLD_SELECT.md
 
     // User packets start here
     ID_USER_PACKET_ENUM = 0x86,
+}
+
+// Used by logging to force visibility of login-related traffic.
+export const LOGIN_PACKET_IDS = new Set<number>([
+    RakNetMessageId.ID_LOGIN_REQUEST,
+    RakNetMessageId.ID_LOGIN_REQUEST_RETURN,
+    RakNetMessageId.ID_LOGIN,
+    RakNetMessageId.ID_LOGIN_RETURN,
+    RakNetMessageId.ID_LOGIN_TOKEN_CHECK,
+    RakNetMessageId.ID_WORLD_LOGIN,
+    RakNetMessageId.ID_WORLD_LOGIN_RETURN,
+    RakNetMessageId.ID_WORLD_SELECT,
+]);
+
+// Normalize packet ID to a byte and check membership.
+export function isLoginPacketId(packetId: number): boolean {
+    return LOGIN_PACKET_IDS.has(packetId & 0xff);
 }
 
 /**

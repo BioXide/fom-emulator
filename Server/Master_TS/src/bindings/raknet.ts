@@ -13,6 +13,7 @@
 
 import { dlopen, FFIType, ptr, suffix, CString, toBuffer } from 'bun:ffi';
 import { join } from 'path';
+import { addressToString as formatAddress } from '../net/address';
 
 // =============================================================================
 // Types
@@ -128,7 +129,14 @@ function getLibraryPath(): string {
 
 // Load the native library
 const libPath = getLibraryPath();
-console.log(`[RakNet FFI] Loading native library from: ${libPath}`);
+// Gate library load logging to avoid noisy console output in quiet mode.
+const shouldLogLoad = (() => {
+    const raw = process.env.FOM_RAKNET_LOG || '';
+    return raw === '1' || raw.toLowerCase() === 'true';
+})();
+if (shouldLogLoad) {
+    console.log(`[RakNet FFI] Loading native library from: ${libPath}`);
+}
 
 const lib = dlopen(libPath, {
     // Lifecycle
@@ -625,13 +633,7 @@ export function addressFromString(ip: string, port: number): RakSystemAddress {
  * Convert a system address to a readable string.
  */
 export function addressToString(address: RakSystemAddress): string {
-    const parts = [
-        (address.binaryAddress >> 0) & 0xff,
-        (address.binaryAddress >> 8) & 0xff,
-        (address.binaryAddress >> 16) & 0xff,
-        (address.binaryAddress >> 24) & 0xff,
-    ];
-    return `${parts.join('.')}:${address.port}`;
+    return formatAddress(address);
 }
 
 /**

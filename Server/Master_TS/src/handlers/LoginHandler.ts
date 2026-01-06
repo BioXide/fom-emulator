@@ -26,7 +26,7 @@ import { Connection, LoginPhase } from '../network/Connection';
 import type { RakSystemAddress } from '../bindings/raknet';
 import { NativeBitStream, encodeString } from '../bindings/raknet';
 import {
-    RakBitStream,
+    MsbBitStream,
     readCompressedString,
     readByteArrayCompressed,
     writeCompressedString,
@@ -37,6 +37,7 @@ import {
 } from '../protocol/HuffmanCodec';
 import { buildWorldLoginBurst } from '../protocol/LithTechMessages';
 import { APARTMENT_WORLD_TABLE } from '../world/WorldRegistry';
+import { info as logInfo } from '../logging/Logger';
 
 export interface LoginHandlerConfig {
     serverMode: 'master' | 'world';
@@ -178,6 +179,7 @@ export class LoginHandler {
      * See: Docs/Notes/LOGIN_REQUEST_6C.md, Docs/Packets/ID_LOGIN_REQUEST.md
      */
     private handleLoginRequest(data: Uint8Array, connection: Connection): LoginResponse | null {
+        // Note: This server currently expects the raw U32BE Huffman format for 0x6C.
         const packetId = data[0];
         this.log(`[Login] 0x${packetId.toString(16)} from ${connection.key} (${data.length} bytes)`);
         
@@ -193,7 +195,7 @@ export class LoginHandler {
         let clientVersion = 0;
         let parseSuccess = false;
 
-        // Handle timestamp prefix first
+        // Handle timestamp prefix first (RakNet optional ID_TIMESTAMP wrapper).
         let actualPacketId = packetId;
         let dataOffset = 0;
         if (packetId === RakNetMessageId.ID_TIMESTAMP && data.length > 9) {
@@ -202,28 +204,11 @@ export class LoginHandler {
             actualPacketId = data[9];
         }
 
-        // StringCompressor format (compressed u32 bit count prefix)
-        if (actualPacketId === RakNetMessageId.ID_LOGIN_REQUEST) {
-            try {
-                const stream = new RakBitStream(Buffer.from(data.slice(dataOffset)));
-                stream.readByte(); // Skip packet ID
-
-                username = readCompressedString(stream, 2048);
-                const versionStream = stream.readCompressed(2);
-                clientVersion = versionStream.readShort();
-                parseSuccess = true;
-                this.log(`[Login6C] StringCompressor: user="${username}" ver=${clientVersion}`);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this.log(`[Login6C] StringCompressor parse failed: ${msg}`);
-            }
-        }
-
-        // Raw U32BE format with preFlag/postFlag bits
+        // Raw U32BE format with preFlag/postFlag bits (canonical for this client)
         // Format: [bit:preFlag] [u32 BE bit-count] [huffman bits] [bit:postFlag] [u16 token]
         if (!parseSuccess && actualPacketId === RakNetMessageId.ID_LOGIN_REQUEST) {
             try {
-                const stream = new RakBitStream(Buffer.from(data.slice(dataOffset)));
+                const stream = new MsbBitStream(Buffer.from(data.slice(dataOffset)));
                 stream.readByte(); // Skip packet ID (0x6C)
 
                 // Read preFlag bit (observed 0)
@@ -256,37 +241,7 @@ export class LoginHandler {
             }
         }
 
-        // Fallback for 0x6C: try without flag bits (in case preFlag/postFlag are not present)
-        if (!parseSuccess && actualPacketId === RakNetMessageId.ID_LOGIN_REQUEST) {
-            try {
-                const stream = new RakBitStream(Buffer.from(data.slice(dataOffset)));
-                stream.readByte(); // Skip packet ID
-
-                // Try reading raw u32 BE bit-count directly (no preFlag)
-                const bitCount = stream.readBits(32);
-                this.log(`[Login6C-fallback] bitCount=${bitCount} (0x${bitCount.toString(16)})`);
-
-                if (bitCount > 0 && bitCount <= 2048 * 16) {
-                    username = decodeHuffmanBitsFromStream(stream, bitCount, 2048);
-                    // Read u16 version
-                    clientVersion = stream.readBits(16);
-                    parseSuccess = true;
-                    this.log(`[Login6C-fallback] Raw U32BE (no flags): user="${username}" ver=${clientVersion}`);
-                }
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this.log(`[Login6C-fallback] parse failed: ${msg}`);
-            }
-        }
-
-        // Final fallback: scan for printable ASCII sequences
-        if (!parseSuccess) {
-            username = this.extractAsciiUsername(data);
-            if (username) {
-                parseSuccess = true;
-                this.log(`[Login] ASCII scan fallback: user="${username}"`);
-            }
-        }
+        // Other 0x6C parsers removed. Raw U32BE pre/post flag path is canonical for this client.
 
         const strictLogin = this.config.loginStrict ?? false;
 
@@ -301,7 +256,7 @@ export class LoginHandler {
             return null;
         }
 
-        // Validate username
+        // Validate username shape and length.
         const maxUserLen = strictLogin ? 32 : 64;
         if (!this.isPrintableAscii(username) || username.length > maxUserLen) {
             this.log(`[Login] reject invalid username len=${username.length}`);
@@ -314,7 +269,7 @@ export class LoginHandler {
             return null;
         }
 
-        // Validate client version
+        // Validate client version if strict mode is enabled.
         if (strictLogin && !this.isClientVersionAllowed(clientVersion)) {
             this.log(`[Login] reject clientVersion=${clientVersion}`);
             return {
@@ -323,7 +278,7 @@ export class LoginHandler {
             };
         }
 
-        // Check cooldown
+        // Check cooldown to avoid rapid duplicate 0x6D responses.
         const now = Date.now();
         const cooldownMs = 2000;
         if (connection.lastLoginResponseSentAt && now - connection.lastLoginResponseSentAt < cooldownMs) {
@@ -331,7 +286,7 @@ export class LoginHandler {
             return null;
         }
 
-        // Check if already authenticated
+        // Check if already authenticated.
         if (connection.loginPhase === LoginPhase.AUTHENTICATED) {
             this.log(`[Login] already authenticated user="${username}"`);
             if (strictLogin) {
@@ -346,7 +301,7 @@ export class LoginHandler {
             return null;
         }
 
-        // Handle duplicate pending request
+        // Handle duplicate pending request.
         if (connection.loginPhase === LoginPhase.USER_SENT && connection.pendingLoginUser === username) {
             if (!this.config.resendDuplicateLogin6D) {
                 this.log(`[Login] duplicate pending -> skip resend`);
@@ -355,7 +310,7 @@ export class LoginHandler {
             this.log(`[Login] duplicate pending -> resend 0x6D`);
         }
 
-        // Store pending login info
+        // Store pending login info for the 0x6E auth step.
         connection.pendingLoginUser = username;
         connection.pendingLoginClientVersion = clientVersion;
         connection.pendingLoginAt = Date.now();
@@ -363,7 +318,7 @@ export class LoginHandler {
 
         this.log(`[Login] Success: user="${username}" ver=${clientVersion}`);
 
-        // Build 0x6D response
+        // Build 0x6D response.
         const response = this.buildLoginRequestReturn(LoginRequestReturnStatus.SUCCESS, username);
         connection.lastLoginResponseSentAt = Date.now();
 
@@ -371,33 +326,6 @@ export class LoginHandler {
             data: response,
             address: connection.address,
         };
-    }
-
-    /**
-     * Extract username by scanning for printable ASCII sequences
-     */
-    private extractAsciiUsername(data: Uint8Array): string {
-        // Skip packet ID, look for sequences of printable ASCII
-        for (let start = 1; start < data.length - 3; start++) {
-            let end = start;
-            while (end < data.length && end - start < 64) {
-                const c = data[end];
-                if (c >= 0x20 && c <= 0x7e) {
-                    end++;
-                } else {
-                    break;
-                }
-            }
-            const len = end - start;
-            if (len >= 3 && len <= 32) {
-                const str = Buffer.from(data.slice(start, end)).toString('latin1');
-                // Basic username validation: alphanumeric with some allowed chars
-                if (/^[a-zA-Z0-9_\-\.]+$/.test(str)) {
-                    return str;
-                }
-            }
-        }
-        return '';
     }
 
     private isPrintableAscii(value: string): boolean {
@@ -421,6 +349,7 @@ export class LoginHandler {
         username: string,
         passwordHash: Buffer,
     ): LoginReturnStatus {
+        // Centralized gate for strict auth decisions.
         if (!username || username.length < 3 || username.length > 32 || !this.isPrintableAscii(username)) {
             return LoginReturnStatus.UNKNOWN_USERNAME;
         }
@@ -445,7 +374,7 @@ export class LoginHandler {
      * See: Docs/Packets/ID_LOGIN_REQUEST_RETURN.md
      */
     private buildLoginRequestReturn(status: LoginRequestReturnStatus, username: string): Buffer {
-        const writer = new RakBitStream();
+        const writer = new MsbBitStream();
         
         try {
             writer.writeByte(RakNetMessageId.ID_LOGIN_REQUEST_RETURN);
@@ -466,19 +395,19 @@ export class LoginHandler {
                 this.log(`[Login6D] raw: ${hex}`);
             }
 
-            // Validate 0x6D payload can round-trip decode locally before sending
+            // Validate 0x6D payload can round-trip decode locally before sending.
             try {
-                const verify = new RakBitStream(payload);
+                const verify = new MsbBitStream(payload);
                 const packetId = verify.readByte();
                 if (packetId !== RakNetMessageId.ID_LOGIN_REQUEST_RETURN) {
-                    console.log(`[Login6D] encode verify failed: bad id=0x${packetId.toString(16)}`);
+                    this.log(`[Login6D] encode verify failed: bad id=0x${packetId.toString(16)}`);
                     return Buffer.alloc(0);
                 }
                 const statusDecoded = readByteArrayCompressed(verify, 8, true)[0] & 0xff;
                 const decoded = readHuffmanStringCompressedU32(verify, 2048);
                 
                 if (decoded !== (username ?? '')) {
-                    console.log(
+                    this.log(
                         `[Login6D] encode verify failed: status=${statusDecoded} expected="${username}" got="${decoded}"`,
                     );
                     return Buffer.alloc(0);
@@ -486,7 +415,7 @@ export class LoginHandler {
                 this.log(`[Login6D] verified: status=${statusDecoded} user="${decoded}"`);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                console.log(`[Login6D] encode verify exception: ${msg}`);
+                this.log(`[Login6D] encode verify exception: ${msg}`);
                 return Buffer.alloc(0);
             }
 
@@ -494,7 +423,7 @@ export class LoginHandler {
             return payload;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.log(`[Login6D] native build exception: ${msg}`);
+            this.log(`[Login6D] native build exception: ${msg}`);
             return Buffer.alloc(0);
         }
     }
@@ -541,7 +470,7 @@ export class LoginHandler {
         let steamTicketLength = 0;
 
         try {
-            const stream = new RakBitStream(Buffer.from(data));
+            const stream = new MsbBitStream(Buffer.from(data));
             let packetId = stream.readByte(); // Skip packet ID
 
             // Handle timestamp prefix if present
@@ -622,7 +551,7 @@ export class LoginHandler {
             connection.loginPhase = LoginPhase.USER_SENT;
         }
 
-        // In master mode, send 0x6F after authentication decision
+        // In master mode, send 0x6F after authentication decision.
         if (this.config.serverMode === 'master') {
             const playerId = status === LoginReturnStatus.SUCCESS
                 ? this.resolveWorldSelectPlayerId(connection)
@@ -662,6 +591,7 @@ export class LoginHandler {
         field5?: boolean;
         isBanned?: boolean;
     }): Buffer {
+        // 0x6F payload uses native BitStream for exact RakNet compatibility.
         const bs = new NativeBitStream();
         bs.writeU8(RakNetMessageId.ID_LOGIN_RETURN);
         bs.writeCompressedU8(options.status & 0xff);
@@ -701,6 +631,7 @@ export class LoginHandler {
     }
 
     private debugDecodeLoginReturn(payload: Buffer): void {
+        // Debug-only round-trip decode to verify the encoder.
         try {
             const bs = new NativeBitStream(payload, true);
             const packetId = bs.readU8();
@@ -733,7 +664,7 @@ export class LoginHandler {
         }
     }
 
-    private writeApartmentStub(writer: RakBitStream): void {
+    private writeApartmentStub(writer: MsbBitStream): void {
         writer.writeCompressed(0, 4); // id
         writer.writeCompressed(0, 1); // type
         writer.writeCompressed(0, 4); // ownerPlayerID
@@ -801,7 +732,7 @@ export class LoginHandler {
         this.log(`[Login] 0x70 from ${connection.key} (${data.length} bytes)`);
 
         try {
-            const stream = new RakBitStream(Buffer.from(data));
+            const stream = new MsbBitStream(Buffer.from(data));
             stream.readByte(); // Skip packet ID
 
             const fromServer = stream.readBit() === 1;
@@ -833,7 +764,7 @@ export class LoginHandler {
     }
 
     private buildLoginTokenCheckResponse(success: boolean, username: string): Buffer {
-        const writer = new RakBitStream();
+        const writer = new MsbBitStream();
         writer.writeByte(RakNetMessageId.ID_LOGIN_TOKEN_CHECK);
         writer.writeBit(true); // fromServer
         writer.writeBit(Boolean(success));
@@ -852,7 +783,7 @@ export class LoginHandler {
         this.log(`[Login] 0x72 from ${connection.key} (${data.length} bytes)`);
 
         try {
-            const stream = new RakBitStream(Buffer.from(data));
+            const stream = new MsbBitStream(Buffer.from(data));
             stream.readByte(); // Skip packet ID
 
             const worldId = this.readCompressedUInt(stream, 1) & 0xff;
@@ -870,7 +801,7 @@ export class LoginHandler {
 
             this.log(`[Login72] worldId=${worldId} inst=${worldInst} playerId=${playerId} const=0x${worldConst.toString(16)}`);
 
-            // In master mode, send world redirect (0x73)
+            // In master mode, send world redirect (0x73).
             if (this.config.serverMode === 'master') {
                 if (!connection.authenticated) {
                     this.log(`[Login72] ignore unauth`);
@@ -889,20 +820,20 @@ export class LoginHandler {
                 };
             }
 
-            // In world mode, accept and send LithTech burst
+            // In world mode, accept and send LithTech burst.
             connection.authenticated = true;
             connection.loginPhase = LoginPhase.IN_WORLD;
 
             const responses: LoginResponse[] = [];
 
-            // Build 0x73 response
+            // Build 0x73 response.
             const response = this.buildWorldLoginReturn(true, this.config.worldIp, this.config.worldPort);
             responses.push({
                 data: response,
                 address: connection.address,
             });
 
-            // Send LithTech burst (NETPROTOCOLVERSION + YOURID + CLIENTOBJECTID + LOADWORLD)
+            // Send LithTech burst (NETPROTOCOLVERSION + YOURID + CLIENTOBJECTID + LOADWORLD).
             const seq = connection.lithTechOutSeq;
             connection.lithTechOutSeq = (seq + 1) & 0x1fff;
 
@@ -935,7 +866,7 @@ export class LoginHandler {
         worldPort: number,
         options?: { code?: number; flag?: number },
     ): Buffer {
-        const writer = new RakBitStream();
+        const writer = new MsbBitStream();
         writer.writeByte(RakNetMessageId.ID_WORLD_LOGIN_RETURN);
         const code = options?.code ?? (success ? 1 : 0);
         const flag = options?.flag ?? 0;
@@ -951,7 +882,7 @@ export class LoginHandler {
      * Build 0x7B WORLD_SELECT packet
      */
     buildWorldSelect(playerId: number, worldId: number, worldInst: number): Buffer {
-        const writer = new RakBitStream();
+        const writer = new MsbBitStream();
         writer.writeByte(RakNetMessageId.ID_WORLD_SELECT);
         writer.writeCompressed(playerId >>> 0, 4);
         writer.writeCompressed(4, 1); // worldCount or type?
@@ -1013,7 +944,7 @@ export class LoginHandler {
         return 0;
     }
 
-    private readCompressedUInt(stream: RakBitStream, size: number): number {
+    private readCompressedUInt(stream: MsbBitStream, size: number): number {
         const comp = stream.readCompressed(size);
         let value = 0;
         let factor = 1;
@@ -1024,7 +955,7 @@ export class LoginHandler {
         return value >>> 0;
     }
 
-    private readBoundedBytes(stream: RakBitStream, maxLen: number): Buffer {
+    private readBoundedBytes(stream: MsbBitStream, maxLen: number): Buffer {
         if (maxLen <= 1) return Buffer.alloc(0);
         const bits = Math.floor(Math.log2(maxLen)) + 1;
         const len = stream.readBits(bits);
@@ -1040,11 +971,11 @@ export class LoginHandler {
         return Buffer.from(bytes);
     }
 
-    private readBoundedString(stream: RakBitStream, maxLen: number): string {
+    private readBoundedString(stream: MsbBitStream, maxLen: number): string {
         return this.readBoundedBytes(stream, maxLen).toString('latin1');
     }
 
-    private writeBoundedString(stream: RakBitStream, value: string, maxLen: number): void {
+    private writeBoundedString(stream: MsbBitStream, value: string, maxLen: number): void {
         if (maxLen <= 1) return;
         const raw = Buffer.from(value ?? '', 'latin1');
         let length = raw.length;
@@ -1068,7 +999,7 @@ export class LoginHandler {
 
     private log(message: string): void {
         if (this.config.debug || this.config.loginDebug) {
-            console.log(message);
+            logInfo(message);
         }
     }
 }

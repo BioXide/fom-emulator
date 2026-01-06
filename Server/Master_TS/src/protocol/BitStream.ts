@@ -4,12 +4,12 @@
  * The game uses bit-packed messages for efficient bandwidth usage.
  * This class mimics CLTMessage_ReadBits/WriteBits from the client.
  *
- * Note: This is LSB-first order, different from RakBitStream (MSB-first).
+ * Note: This is LSB-first order, different from MsbBitStream (MSB-first).
  * Use this for LithTech game layer messages.
- * Use RakBitStream (in HuffmanCodec.ts) for RakNet transport layer messages.
+ * Use MsbBitStream (in HuffmanCodec.ts) for RakNet transport layer messages.
  */
 
-export class BitStreamReader {
+export class LsbBitStreamReader {
     readonly bitOrder: 'lsb' = 'lsb';
     private buffer: Buffer;
     private bitPosition: number = 0;
@@ -112,7 +112,7 @@ export class BitStreamReader {
     }
 }
 
-export class BitStreamWriter {
+export class LsbBitStreamWriter {
     readonly bitOrder: 'lsb' = 'lsb';
     private buffer: Buffer;
     private bitPosition: number = 0;
@@ -133,6 +133,7 @@ export class BitStreamWriter {
     }
 
     private ensureCapacity(additionalBits: number): void {
+        // Grow the backing buffer to fit upcoming writes.
         const requiredBytes = Math.ceil((this.bitPosition + additionalBits) / 8);
         if (requiredBytes > this.buffer.length) {
             const newBuffer = Buffer.alloc(Math.max(requiredBytes, this.buffer.length * 2));
@@ -211,10 +212,12 @@ export class BitStreamWriter {
      * Get the final buffer (trimmed to actual size)
      */
     toBuffer(): Buffer {
-        // Flush any remaining bits
+        // Flush any remaining bits and trim to size.
         if (this.bitsInCurrentByte > 0) {
             this.buffer[this.bytePosition] = this.currentByte;
         }
         return this.buffer.subarray(0, this.length);
     }
 }
+
+export { LsbBitStreamReader as BitStreamReader, LsbBitStreamWriter as BitStreamWriter };

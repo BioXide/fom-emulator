@@ -60,9 +60,11 @@ export const APARTMENT_WORLD_TABLE: Readonly<Record<number, string>> = {
 };
 
 export function getWorldInfo(id: number): WorldInfo | undefined {
+    // Look up by numeric world id.
     return WORLD_TABLE.find((entry) => entry.id === id);
 }
 
 export function getApartmentFolder(index: number): string | undefined {
+    // Lookup apartment instance folder by index.
     return APARTMENT_WORLD_TABLE[index];
 }
