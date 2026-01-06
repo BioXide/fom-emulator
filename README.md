@@ -16,8 +16,19 @@ fork, modify, and rework it to fit your own goals.
 ## Overview
 
 This repo is a working reverse-engineering + emulation sandbox for **Face of Mankind** (FoM).
-It includes a TypeScript server emulator, a TypeScript client emulator, hook/inject tooling, and
-reverse-engineering notes/mappings.
+It includes a TypeScript server emulator (with native RakNet via FFI), a TypeScript client emulator,
+hook tooling, and reverse-engineering notes/mappings. 
+
+This work is being done to preserve Face of Mankind and to help keep its community alive. The goal is to give players the tools, 
+documentation, and practical guidance they need to run their own Face of Mankind private servers with the least amount of friction. 
+By making it possible for others easily to spin up servers, test changes, and share improvements, the project supports long-term preservation 
+and puts the game’s future in the hands of the people who care about it most.
+
+We’ll also be using this project to further explore AI-driven development.
+
+There are also plans for an official FoTD private server, but with hardlocked classic legacy factions.
+Alongside that, custom factions would be supported, but gated behind staff approval to ensure new factions fit the games's and lore.
+More will be shared as we get further to a playable version of the game.
 
 ## Quick Start
 
@@ -36,15 +47,15 @@ From repo root:
 ```bat
 start_client.bat
 ```
-World‑only test client:
+World-only test client:
 ```bat
 start_client_world.bat
 ```
 
-### 3) Real FoM Client (Steam -> Client/)
+### 3) Real FoM Client (Steam -> Client/Client_FoM/)
 Download **Fall of the Dominion** from Steam, then place the install into:
 ```
-Client\
+Client\Client_FoM\
 ```
 Expected contents include the FoM client EXE + resources (the real game install layout).
 
@@ -56,12 +67,11 @@ To run the game client with hook logging:
 launch_fom_with_log.bat
 ```
 
-
 ### 4) DInput8 Proxy Hook (real client)
 The hook uses a **dinput8.dll proxy** placed beside the game EXE:
 
 How it works (short):
-- `Client\dinput8.dll` is loaded first by the game (DLL search order).
+- `Client\Client_FoM\dinput8.dll` is loaded first by the game (DLL search order).
 - The proxy loads the real system `dinput8.dll` and forwards exports.
 - On `DLL_PROCESS_ATTACH`, it starts the hook thread (`HookAttach`) that installs detours/logging.
 
@@ -69,49 +79,43 @@ This proxy is optional and is used for logging + code injection.
 
 Build + deploy:
 ```bat
-build_hookinjector.bat
+build_hook.bat
 ```
-This builds `dinput8.dll` in the repo root. Copy it (and the config) into the game folder:
-```bat
-copy dinput8.dll Client\
-copy Client\fom_hook.ini Client\
-```
+This builds `Hook\Build\<Config>\dinput8.dll` and auto-copies it to `Client\Client_FoM\`.
+If you need to adjust logging/filters, edit `Client\Client_FoM\fom_hook.ini`.
 Then launch:
 ```bat
 launch_fom_with_log.bat
 ```
 
-## Emulator Status (as of 2026-01-02)
+## Emulator Status (as of 2026-01-06)
 
 **Works / in place**
 - Master + world server processes boot and accept connections (`start_server.bat` + `start_world.bat`).
-- Login chain is mapped end-to-end: `0x6C -> 0x6D -> 0x6E -> 0x7B -> 0x72 -> 0x73`. Master emits `0x7B` and waits for `0x72` before sending `0x73`; the client emulator follows this chain and auto-connects to world.
+- Large portions of the client are deobfuscated.
+- The full login handshake is solved through world connect: `0x6C -> 0x6D -> 0x6E -> 0x6F`, then `0x72 -> 0x73`. The client emulator follows this chain and auto-connects to world.
 - World side accepts `0x72` and sends initial LithTech SMSGs (`NETPROTOCOLVERSION`/`YOURID`/`CLIENTOBJECTID`/`LOADWORLD`), parses `CMSG_CONNECTSTAGE` (`0x09`), and emits a minimal spawn + periodic `SMSG_UNGUARANTEEDUPDATE` heartbeats.
 - Client emulator mirrors `fom_client` packet cadence for automated testing/validation and keeps a dedicated world connection/log.
 - AddressMap coverage is deep: LithTech handler table + `SMSG_UPDATE`/`SMSG_PACKETGROUP` layouts and many CShell packet reads are mapped.
 - Spawn path is mapped in `AddressMap.md` (SMSG_UPDATE GroupObjUpdate -> `Update_ReadObjectDefBlock` -> `World_AddObjectFromUpdate`/`CreateObjectFromDef`, plus CF_* flags like `MODELINFO`/`RENDERINFO`/`ATTACHMENTS`/`DIMS`).
-- RSA key swap is in place so the emulator can decrypt login blobs (`Client/fom_public.key` must match `ServerEmulator/fom_private_key.env`).
-
-**Not yet / fragile**
-- Real-client login still needs full `0x6C` + `0x6E` auth handling. If login is bypassed, the world-connect path can be exercised, but the full auth chain is not robust.
-- Protocol framing alignment is still in progress (MSB/LSB boundaries, compressed ints, default ports); expect occasional bit/length mismatches.
-- Visible-character spawn is still incomplete in the emulator: we need a proper `SMSG_UPDATE` object-update with `CF_NEWOBJECT` + `POSITION` + `ROTATION` + `MODELINFO` + `RENDERINFO` (and likely `FLAGS`/`SCALE`/`ATTACHMENTS`/`DIMS`) plus a valid object-def block (objType + file-id lists / sub-block) and model-info delta list.
-- Connection-accept handling is still being tuned (legacy `0x0E` wrapper/reliable peer seeding).
-
+- RSA key swap is in place so the emulator can decrypt login blobs (`Client/Client_FoM/fom_public.key` must match `Server/Master_TS/fom_private_key.env`).
 
 ## Repo Layout
 
-- `ServerEmulator/`  
-  TypeScript server emulator (master + world).  
-  Logs: `ServerEmulator\logs\`
+- `Server/`  
+  Server implementations, named `SERVERTYPE_FRAMEWORK` (e.g., `Master_TS`, `World_TS`).
 
-- `ClientEmulator/`  
+- `Server/Master_TS/`  
+  TypeScript server emulator (master + world) using native RakNet via Bun FFI.  
+  Logs: `Server\Master_TS\logs\`
+
+- `Client/Client_TS/`  
   TypeScript client emulator for packet validation + fast iteration.  
-  Logs: `ClientEmulator\logs\`
+  Logs: `Client\Client_TS\logs\`
 
-- `HookInjector/`  
+- `Hook/`  
   DInput8 proxy hook + packet logging helpers.  
-  Build: `build_hookinjector.bat`
+  Build: `build_hook.bat`
 
 - `Docs/`  
   Reverse-engineering notes, packet layouts, and project logs.
@@ -120,13 +124,16 @@ launch_fom_with_log.bat
   - `Docs/Projects/` milestones & decisions
 
 - `External/`  
-  Reference **source code trees** (LithTech / RakNet 3.5) used for struct naming, message layout, and behavior baselines.
+  Reference **source code trees** (LithTech / RakNet 3.611) used for struct naming, message layout, and behavior baselines.
 
 - `AddressMap.md`  
   Canonical address map of named symbols and findings.
 
-- `Client/*.i64` (IDA databases)  
+- `Client/Client_FoM/*.i64` (IDA databases)  
   IDA Pro 9.2 databases for `fom_client.exe`, `CShell.dll`, and `CRes.dll`. Open the `.i64` beside the matching binary to get all renames, types, and comments.
+
+- `Scripts/`  
+  Helper scripts for local tooling (may be project-specific).
 
 ## Common Tasks
 
@@ -148,13 +155,15 @@ start_client_world.bat -host 127.0.0.1 -port 62000 -world-id 1 -world-inst 1 -wo
 ## Requirements
 
 - Windows (batch scripts are provided)
-- Node.js + npm (used by `ServerEmulator` and `ClientEmulator`)
-- `IDA Professional 9.2` for reverse‑engineering (see `AGENTS.md` for MCP wiring)
+- Bun (used by `Server/Master_TS`)
+- Node.js + npm (used by `Client/Client_TS`)
+- `IDA Professional 9.2` for reverse-engineering (see `AGENTS.md` for MCP wiring)
 
 ## Notes
 
-- Hook output: `fom_hook.log` in `Client\` (or next to the DLL if `LogPath` is relative).
+- Hook output: `fom_hook.log` in `Client\Client_FoM\` (or next to the DLL if `LogPath` is relative).
 - Client/Server logs are the primary validation surface for packet parity.
+- Most of `Client\Client_FoM\` is **intentionally ignored** by git (game install assets). Tracked exceptions are limited to `fom_hook.ini`, `fom_public.key`, `master.cfg`, `OpenAL32.dll`, and IDA databases (`*.i64`, `*.idb`).
 - See `Docs/Notes/Login_Flow.md` and `Docs/Notes/ClientNetworking.md` for flow diagrams.
 
 ## Docs Tour (high‑signal starting points)

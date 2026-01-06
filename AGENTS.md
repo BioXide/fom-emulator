@@ -2,7 +2,7 @@
 
 # Purpose
 - We are reverse engineering this game, which no longer exists, for `research/preservation`; legal concerns are explicitly disregarded by project scope.
-- Primary focus: `Client/` behavior, network flow, packet formats, and hook points used for server redirection and custom code injection.
+- Primary focus: `Client/Client_FoM` behavior, network flow, packet formats, and hook points used for server redirection and custom code injection.
 - Item/catalog reverse engineering is in scope; treat `CRes.dll` as the likely item/resource handler until verified.
 - Stay read-only first; only rename/add comments/types after validating with `xrefs` or decomp.
 
@@ -11,21 +11,23 @@
 - Protocol drill-downs live flat in `Docs\Notes\` (files: `LOGIN*.md`, `CShell_Gameplay_Packets.md`, `CUDPDriver.md`, `ClientNetworking.md`, `MSG_ID_*`).
 - `Login_Request.md`, `Docs\Login_Request.md`, `Docs\Login_Request_*.md` (login handshake notes and captures; use newest dated file)
 - `RakNet_LithTech_DeepDive.md` (RakNet/LithTech integration notes and assumptions)
-- `ServerEmulator_Findings.md` (TS emulator analysis, reliability formats, known mismatches)
 - `Docs\Projects\Emulator.md` (milestones + decision log)
 - `Docs\Logs\Emulator.md` (active task checklist; update with progress)
-- `ServerEmulator\` (emulator codebase to align with `FoM`)
-- `HookInjector\` (DLL injector + hook points + packet decode/logging helpers)
+- `Server\Master_TS\` (active server emulator)
+- `Hook\` (DLL injector + hook points + packet decode/logging helpers)
 - `Docs\Logs\FoM Reverse Engineering.md` (active RE task log for packet/layout work)
 - `AddressMap.md` (working FoM map; add confirmed addresses continuously)
 - `catalog\` (`CRes_*_items.csv` / `CRes_*_categories.csv` item tables; derived from `CRes.dll`)
 - `Docs\Notes\cvar_bind_table.csv` (console variable bindings)
 - `Docs\Notes\huffman_freq_table.json`, `Docs\Notes\huffman_table_runtime.json` (string compression tables)
-- `Client\Resources\` (`CRes.dll`/`CShell.dll` live here; FoM client resource handling)
+- `Client\Client_FoM\Resources\` (`CRes.dll`/`CShell.dll` live here; FoM client resource handling)
 
 # Catalog / Items
 - Item tables live under `catalog\` (`CRes_*_items.csv`, `CRes_*_categories.csv`).
-- `Client\Resources\CRes.dll` is the suspected item/resource driver; confirm with strings/`xrefs` before renames.
+- `Client\Client_FoM\Resources\CRes.dll` is the suspected item/resource driver; confirm with strings/`xrefs` before renames.
+
+# String Encoding
+- Treat decoded strings as null-terminated; clamp outgoing strings to `maxLen-1` before encoding (client decode paths often use 0x800 buffers).
 
 # External References
 - `External\LithTech\` (`LithTech` source used by the binaries; use for struct names, class layouts, and behavior baselines).
@@ -38,15 +40,15 @@
 - Continuously map/record confirmed addresses in `AddressMap.md`.
 
 # Targets
-- `Client\` (FoM client binaries; see for the current executable filename)
-- `Client\server.dll` (dedicated server binary; packet handlers, session flow, and world behavior)
-- `Client\Resources\CRes.dll` (resource/item tables and catalog helpers)
-- `Client\Resources\CShell.dll` (network bitstream parsing + packet read/write)
+- `Client\Client_FoM\` (FoM client binaries; see for the current executable filename)
+- `Client\Client_FoM\server.dll` (dedicated server binary; packet handlers, session flow, and world behavior)
+- `Client\Client_FoM\Resources\CRes.dll` (resource/item tables and catalog helpers)
+- `Client\Client_FoM\Resources\CShell.dll` (network bitstream parsing + packet read/write)
 
 # Runtime Artifacts
-- Server logs: `ServerEmulator\logs\` (authoritative emulator output)
+- Server logs: `Server\Master_TS\logs\` (authoritative emulator output)
 - Client logs: repo root `fom_hook.log` (hook/injector output)
-- Client dumps: `Client\` or `Client\` (crash dumps for `fom_client.exe`)
+- Client dumps: `Client\Client_FoM\` (crash dumps for `fom_client.exe`)
 - Config: both client and server use `.ini` files for env vars + quick behavior toggles
 - Validation/launch: `start_server.bat` (server) and `launch_fom_with_log.bat` (client)
 
@@ -58,10 +60,14 @@
 - Codex config: .codex\config.toml
 - Ensure:
   - [features] rmcp_client = true
-  - [mcp_servers.ida] url = "http://127.0.0.1:13337/mcp"
-  - [mcp_servers.ida2] url = "http://127.0.0.1:13338/mcp"
-  - [mcp_servers.ida3] url = "http://127.0.0.1:13339/mcp"
+  - [mcp_servers.ida1] url = "http://127.0.0.1:13337/mcp?ext=dbg" (enables dbg_* tools)
+  - [mcp_servers.ida2] url = "http://127.0.0.1:13338/mcp?ext=dbg"
+  - [mcp_servers.ida3] url = "http://127.0.0.1:13339/mcp?ext=dbg"
 - Verify: `codex mcp list` and `/mcp` in Codex TUI.
+
+# Debugger (IDA MCP)
+- dbg_* tools are available when using `?ext=dbg` (start/attach, breakpoints, step/run, regs, memory).
+- It is acceptable to run the server emulator locally and start/attach the client process from IDA for debugging.
 
 # Git Integration (Always-On)
 - Treat git as the default state tracker; run `git status -sb` before/after each work chunk and before reporting completion.
