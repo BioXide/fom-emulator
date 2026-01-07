@@ -64,6 +64,8 @@
 !/Client/Client_FoM/master.cfg
 !/Client/Client_FoM/**/*.i64
 !/Client/Client_FoM/**/*.idb
+!/Client/Client_FoM/**/*.c
+!/Client/Client_FoM/**/*.h
 !/Client/Client_TS/**
 /Client/Client_TS/node_modules/
 /Client/Client_TS/node_modules/**
