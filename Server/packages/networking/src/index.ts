@@ -28,7 +28,6 @@ export * from './net/address';
 // Protocol utilities
 export * from './protocol/BitStream';
 export * from './protocol/Constants';
-export * from './protocol/HuffmanCodec';
 export * from './protocol/LithCompressed';
 // LithTechMessages - exclude LithTechMessageId (already in Constants)
 export {

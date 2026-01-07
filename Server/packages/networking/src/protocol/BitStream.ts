@@ -4,9 +4,9 @@
  * The game uses bit-packed messages for efficient bandwidth usage.
  * This class mimics CLTMessage_ReadBits/WriteBits from the client.
  *
- * Note: This is LSB-first order, different from MsbBitStream (MSB-first).
+ * Note: This is LSB-first order, different from NativeBitStream (MSB-first).
  * Use this for LithTech game layer messages.
- * Use MsbBitStream (in HuffmanCodec.ts) for RakNet transport layer messages.
+ * Use NativeBitStream (from bindings/raknet.ts) for RakNet transport layer messages.
  */
 
 export class LsbBitStreamReader {

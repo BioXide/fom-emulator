@@ -7,7 +7,7 @@
  * Based on legacy TS emulator implementation patterns.
  */
 
-import { MsbBitStream } from './HuffmanCodec';
+import { NativeBitStream } from '../bindings/raknet';
 import { LithTechMessageId } from './Constants';
 
 const SEQUENCE_MASK = 0x1fff; // 13 bits
@@ -246,8 +246,12 @@ export function buildWorldLoginBurst(
  * Build unguaranteed update heartbeat (MSG_UNGUARANTEEDUPDATE = 10)
  */
 export function buildUnguaranteedUpdate(timestamp: number): Buffer {
-    const writer = new MsbBitStream();
-    writer.writeByte(LithTechMessageId.MSG_UNGUARANTEEDUPDATE);
-    writer.writeLong(timestamp);
-    return writer.data;
+    const bs = new NativeBitStream();
+    try {
+        bs.writeU8(LithTechMessageId.MSG_UNGUARANTEEDUPDATE);
+        bs.writeU32(timestamp >>> 0);
+        return bs.getData();
+    } finally {
+        bs.destroy();
+    }
 }

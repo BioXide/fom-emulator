@@ -24,14 +24,7 @@ import {
     type RakSystemAddress,
     NativeBitStream,
     encodeString,
-    MsbBitStream,
-    readCompressedString,
-    readByteArrayCompressed,
-    writeCompressedString,
-    writeByteArrayCompressed,
-    decodeHuffmanBitsFromStream,
-    writeHuffmanStringCompressedU32,
-    readHuffmanStringCompressedU32,
+    decodeString,
     buildWorldLoginBurst,
 } from '@openfom/networking';
 import { Connection, LoginPhase } from '../network/Connection';
@@ -160,28 +153,17 @@ export class LoginHandler {
      * Handle 0x6C - Login request with username
      *
      * Packet format (ID_LOGIN_REQUEST 0x6C):
-     *   - username (StringCompressor with compressed u32 bit count prefix) OR
      *   - preFlag (1 bit, observed 0)
      *   - username (Huffman with raw u32 BE bit count prefix)
      *   - postFlag (1 bit, observed 0)
      *   - clientVersion (raw u16, 16 bits)
      *
-     * Notes:
-     *   - We accept the StringCompressor layout while keeping the packet ID at 0x6C.
-     *
-     * Packet format (legacy 0x6C raw layout):
-     *   - preFlag (1 bit, observed 0)
-     *   - username (Huffman with raw u32 BE bit count prefix)
-     *   - postFlag (1 bit, observed 0)
-     *   - clientVersion (raw u16, 16 bits)
-     *
-     * See: Docs/Notes/LOGIN_REQUEST_6C.md, Docs/Packets/ID_LOGIN_REQUEST.md
+     * See: Docs/Packets/ID_LOGIN_REQUEST.md
      */
     private handleLoginRequest(data: Uint8Array, connection: Connection): LoginResponse | null {
-        // Note: This server currently expects the raw U32BE Huffman format for 0x6C.
         const packetId = data[0];
         this.log(`[Login] 0x${packetId.toString(16)} from ${connection.key} (${data.length} bytes)`);
-        
+
         // Debug: dump raw bytes
         if (this.config.debug) {
             const hex = Array.from(data.slice(0, Math.min(32, data.length)))
@@ -203,44 +185,31 @@ export class LoginHandler {
             actualPacketId = data[9];
         }
 
-        // Raw U32BE format with preFlag/postFlag bits (canonical for this client)
-        // Format: [bit:preFlag] [u32 BE bit-count] [huffman bits] [bit:postFlag] [u16 token]
-        if (!parseSuccess && actualPacketId === RakNetMessageId.ID_LOGIN_REQUEST) {
+        // Parse 0x6C packet - Raw U32BE format with preFlag/postFlag bits
+        if (actualPacketId === RakNetMessageId.ID_LOGIN_REQUEST) {
+            const bs = new NativeBitStream(Buffer.from(data.slice(dataOffset)), true);
             try {
-                const stream = new MsbBitStream(Buffer.from(data.slice(dataOffset)));
-                stream.readByte(); // Skip packet ID (0x6C)
+                bs.readU8(); // Skip packet ID (0x6C)
 
-                // Read preFlag bit (observed 0)
-                const preFlag = stream.readBit();
-                this.log(`[Login6C] preFlag=${preFlag}`);
+                // Decode Huffman-encoded username
+                username = decodeString(bs, 2048);
+                this.log(`[Login6C] Huffman decoded: user="${username}"`);
 
-                // Read raw u32 BE bit-count (32 bits, big-endian)
-                const bitCount = stream.readBits(32);
-                this.log(`[Login6C] bitCount=${bitCount} (0x${bitCount.toString(16)})`);
+                // Read postFlag bit (observed 0)
+                const postFlag = bs.readBit();
+                this.log(`[Login6C] postFlag=${postFlag}`);
 
-                if (bitCount > 0 && bitCount <= 2048 * 16) {
-                    // Decode Huffman-encoded username
-                    username = decodeHuffmanBitsFromStream(stream, bitCount, 2048);
-                    this.log(`[Login6C] Huffman decoded: user="${username}"`);
-
-                    // Read postFlag bit (observed 0)
-                    const postFlag = stream.readBit();
-                    this.log(`[Login6C] postFlag=${postFlag}`);
-
-                    // Read u16 token/version (16 bits, MSB-first)
-                    clientVersion = stream.readBits(16);
-                    parseSuccess = true;
-                    this.log(`[Login6C] Raw U32BE format: user="${username}" ver=${clientVersion}`);
-                } else {
-                    this.log(`[Login6C] Invalid bitCount=${bitCount}`);
-                }
+                // Read u16 token/version (16 bits, MSB-first)
+                clientVersion = bs.readU16();
+                parseSuccess = true;
+                this.log(`[Login6C] Raw U32BE format: user="${username}" ver=${clientVersion}`);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
-                this.log(`[Login6C] Raw U32BE parse failed: ${msg}`);
+                this.log(`[Login6C] Parse failed: ${msg}`);
+            } finally {
+                bs.destroy();
             }
         }
-
-        // Other 0x6C parsers removed. Raw U32BE pre/post flag path is canonical for this client.
 
         const strictLogin = this.config.loginStrict ?? false;
 
@@ -346,7 +315,7 @@ export class LoginHandler {
     private evaluateLoginAuthStatus(
         connection: Connection,
         username: string,
-        passwordHash: Buffer,
+        passwordHash: string,
     ): LoginReturnStatus {
         // Centralized gate for strict auth decisions.
         if (!username || username.length < 3 || username.length > 32 || !this.isPrintableAscii(username)) {
@@ -367,24 +336,20 @@ export class LoginHandler {
      * Build 0x6D LOGIN_REQUEST_RETURN response using native RakNet BitStream
      *
      * Packet format:
-     *   - status (ByteArrayCompressed u8, LTClient format)
+     *   - status (compressed u8)
      *   - username (StringCompressor, max 2048)
      *
      * See: Docs/Packets/ID_LOGIN_REQUEST_RETURN.md
      */
     private buildLoginRequestReturn(status: LoginRequestReturnStatus, username: string): Buffer {
-        const writer = new MsbBitStream();
-        
+        const bs = new NativeBitStream();
+
         try {
-            writer.writeByte(RakNetMessageId.ID_LOGIN_REQUEST_RETURN);
-            
-            // Write status using LTClient ByteArrayCompressed (u8)
-            writeByteArrayCompressed(writer, Buffer.from([status & 0xff]), 8, true);
+            bs.writeU8(RakNetMessageId.ID_LOGIN_REQUEST_RETURN);
+            bs.writeCompressedU8(status & 0xff);
+            encodeString(username ?? '', bs, 2048);
 
-            // Write Huffman-encoded username with compressed u32 bit count (LT client format)
-            writeHuffmanStringCompressedU32(writer, username ?? '', 2048);
-
-            const payload = writer.data;
+            const payload = bs.getData();
 
             // Debug: dump raw bytes
             if (this.config.debug) {
@@ -394,36 +359,14 @@ export class LoginHandler {
                 this.log(`[Login6D] raw: ${hex}`);
             }
 
-            // Validate 0x6D payload can round-trip decode locally before sending.
-            try {
-                const verify = new MsbBitStream(payload);
-                const packetId = verify.readByte();
-                if (packetId !== RakNetMessageId.ID_LOGIN_REQUEST_RETURN) {
-                    this.log(`[Login6D] encode verify failed: bad id=0x${packetId.toString(16)}`);
-                    return Buffer.alloc(0);
-                }
-                const statusDecoded = readByteArrayCompressed(verify, 8, true)[0] & 0xff;
-                const decoded = readHuffmanStringCompressedU32(verify, 2048);
-                
-                if (decoded !== (username ?? '')) {
-                    this.log(
-                        `[Login6D] encode verify failed: status=${statusDecoded} expected="${username}" got="${decoded}"`,
-                    );
-                    return Buffer.alloc(0);
-                }
-                this.log(`[Login6D] verified: status=${statusDecoded} user="${decoded}"`);
-            } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                this.log(`[Login6D] encode verify exception: ${msg}`);
-                return Buffer.alloc(0);
-            }
-
             this.log(`[Login6D] build status=${status} user="${username}" len=${payload.length}`);
             return payload;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            this.log(`[Login6D] native build exception: ${msg}`);
+            this.log(`[Login6D] build exception: ${msg}`);
             return Buffer.alloc(0);
+        } finally {
+            bs.destroy();
         }
     }
 
@@ -445,7 +388,7 @@ export class LoginHandler {
      *   - loginToken (bounded string, 64 bytes)
      *   - computerName (StringCompressor)
      *   - hasSteamTicket (bit)
-     *   - [if hasSteamTicket] steamTicket (0x400 compressed bytes) + steamTicketLength (compressed u32)
+     *   - [if hasSteamTicket] steamTicket (1024 compressed bytes) + steamTicketLength (compressed u32)
      *
      * See: Docs/Packets/ID_LOGIN.md
      */
@@ -461,53 +404,56 @@ export class LoginHandler {
         let computerName = '';
         let macAddress = '';
         let loginToken = '';
-        let passwordHash: Buffer = Buffer.alloc(0);
+        let passwordHash = '';
         const fileCRCs: number[] = [];
         const driveModels: string[] = [];
         const driveSerials: string[] = [];
         let hasSteamTicket = false;
         let steamTicketLength = 0;
 
+        let bs: NativeBitStream | null = null;
         try {
-            const stream = new MsbBitStream(Buffer.from(data));
-            let packetId = stream.readByte(); // Skip packet ID
+            bs = new NativeBitStream(Buffer.from(data), true);
+            let packetId = bs.readU8(); // Skip packet ID
 
             // Handle timestamp prefix if present
             if (packetId === RakNetMessageId.ID_TIMESTAMP) {
-                stream.readLongLong(); // Skip timestamp
-                packetId = stream.readByte(); // Read actual packet ID
+                bs.readBytes(8); // Skip 8-byte timestamp
+                packetId = bs.readU8(); // Read actual packet ID
             }
 
             // Parse according to Docs/Packets/ID_LOGIN.md
-            username = readCompressedString(stream, 2048);
-            passwordHash = this.readBoundedBytes(stream, 0x40);
+            username = decodeString(bs, 2048);
+            passwordHash = bs.readString(64, 'hex')
 
             // Read 3 file CRCs
             for (let i = 0; i < 3; i++) {
-                fileCRCs.push(this.readCompressedUInt(stream, 4));
+                fileCRCs.push(bs.readCompressedU32());
             }
 
-            macAddress = readCompressedString(stream, 2048);
+            macAddress = decodeString(bs, 2048);
 
             // Read 4 drive models and serial numbers
             for (let i = 0; i < 4; i++) {
-                driveModels.push(this.readBoundedString(stream, 0x40));
-                driveSerials.push(this.readBoundedString(stream, 0x20));
+                driveModels.push(bs.readString(64));
+                driveSerials.push(bs.readString(32));
             }
 
-            loginToken = this.readBoundedString(stream, 0x40);
-            computerName = readCompressedString(stream, 2048);
+            loginToken = bs.readString(64);
+            computerName = decodeString(bs, 2048);
 
-            hasSteamTicket = stream.readBit() === 1;
+            hasSteamTicket = bs.readBit();
             if (hasSteamTicket) {
-                // Read 0x400 compressed bytes
-                for (let i = 0; i < 0x400; i++) {
-                    stream.readCompressed(1);
+                // Read 1024 compressed bytes
+                for (let i = 0; i < 1024; i++) {
+                    bs.readCompressedU8();
                 }
-                steamTicketLength = this.readCompressedUInt(stream, 4);
+                steamTicketLength = bs.readCompressedU32();
             }
         } catch {
             // Best-effort parse - continue with what we got
+        } finally {
+            bs?.destroy();
         }
 
         // Fall back to pending username if not parsed
@@ -518,7 +464,7 @@ export class LoginHandler {
         // Store auth details
         connection.loginAuthUsername = username;
         connection.loginAuthComputer = computerName;
-        connection.loginAuthPasswordHash = passwordHash.toString('hex');
+        connection.loginAuthPasswordHash = passwordHash;
         connection.loginAuthMacAddress = macAddress;
         connection.loginAuthLoginToken = loginToken;
         connection.loginAuthFileCRCs = fileCRCs;
@@ -531,10 +477,9 @@ export class LoginHandler {
             : LoginReturnStatus.SUCCESS;
         const loginClientVersion = connection.pendingLoginClientVersion || 0;
 
-        const hashPreview = passwordHash.length > 0 ? passwordHash.subarray(0, 8).toString('hex') : '';
         const crcNote = fileCRCs.length > 0 ? fileCRCs.map((v) => `0x${v.toString(16)}`).join(',') : 'none';
         this.log(
-            `[Login6E] auth status=${status} user="${username}" hash=${hashPreview} mac="${macAddress}" crcs=[${crcNote}]`,
+            `[Login6E] auth status=${status} user="${username}" hash="${passwordHash.slice(0,16)}..." mac="${macAddress}" crcs=[${crcNote}] token="${loginToken}" macAddress=[${macAddress}] drives=[${driveModels},${driveSerials}]`,
         );
 
         if (status === LoginReturnStatus.SUCCESS) {
@@ -705,21 +650,21 @@ export class LoginHandler {
     private handleLoginTokenCheck(data: Uint8Array, connection: Connection): LoginResponse | null {
         this.log(`[Login] 0x70 from ${connection.key} (${data.length} bytes)`);
 
+        const bs = new NativeBitStream(Buffer.from(data), true);
         try {
-            const stream = new MsbBitStream(Buffer.from(data));
-            stream.readByte(); // Skip packet ID
+            bs.readU8(); // Skip packet ID
 
-            const fromServer = stream.readBit() === 1;
+            const fromServer = bs.readBit();
             if (fromServer) {
                 // Server -> Client (we received this - shouldn't happen on server)
-                const success = stream.readBit() === 1;
-                const username = this.readBoundedString(stream, 0x20);
+                const success = bs.readBit();
+                const username = bs.readString(32);
                 this.log(`[Login70] recv server->client success=${success} user="${username}"`);
                 return null;
             }
 
             // Client -> Server
-            const requestToken = this.readBoundedString(stream, 0x20);
+            const requestToken = bs.readString(32);
             const username = connection.pendingLoginUser || connection.username || '';
 
             this.log(`[Login70] token="${requestToken}" -> respond with user="${username}"`);
@@ -734,16 +679,22 @@ export class LoginHandler {
             const msg = err instanceof Error ? err.message : String(err);
             this.log(`[Login70] parse error: ${msg}`);
             return null;
+        } finally {
+            bs.destroy();
         }
     }
 
     private buildLoginTokenCheckResponse(success: boolean, username: string): Buffer {
-        const writer = new MsbBitStream();
-        writer.writeByte(RakNetMessageId.ID_LOGIN_TOKEN_CHECK);
-        writer.writeBit(true); // fromServer
-        writer.writeBit(Boolean(success));
-        this.writeBoundedString(writer, username ?? '', 0x20);
-        return writer.data;
+        const bs = new NativeBitStream();
+        try {
+            bs.writeU8(RakNetMessageId.ID_LOGIN_TOKEN_CHECK);
+            bs.writeBit(true); // fromServer
+            bs.writeBit(Boolean(success));
+            bs.writeString(username ?? '', 32);
+            return bs.getData();
+        } finally {
+            bs.destroy();
+        }
     }
 
     // =========================================================================
@@ -756,14 +707,14 @@ export class LoginHandler {
     private handleWorldLogin(data: Uint8Array, connection: Connection): LoginResponse | LoginResponse[] | null {
         this.log(`[Login] 0x72 from ${connection.key} (${data.length} bytes)`);
 
+        const bs = new NativeBitStream(Buffer.from(data), true);
         try {
-            const stream = new MsbBitStream(Buffer.from(data));
-            stream.readByte(); // Skip packet ID
+            bs.readU8(); // Skip packet ID
 
-            const worldId = this.readCompressedUInt(stream, 1) & 0xff;
-            const worldInst = this.readCompressedUInt(stream, 1) & 0xff;
-            const playerId = this.readCompressedUInt(stream, 4);
-            const worldConst = this.readCompressedUInt(stream, 4);
+            const worldId = bs.readCompressedU8();
+            const worldInst = bs.readCompressedU8();
+            const playerId = bs.readCompressedU32();
+            const worldConst = bs.readCompressedU32();
 
             connection.worldId = worldId;
             connection.worldInst = worldInst;
@@ -828,6 +779,8 @@ export class LoginHandler {
             const msg = err instanceof Error ? err.message : String(err);
             this.log(`[Login72] parse error: ${msg}`);
             return null;
+        } finally {
+            bs.destroy();
         }
     }
 
@@ -840,29 +793,37 @@ export class LoginHandler {
         worldPort: number,
         options?: { code?: number; flag?: number },
     ): Buffer {
-        const writer = new MsbBitStream();
-        writer.writeByte(RakNetMessageId.ID_WORLD_LOGIN_RETURN);
-        const code = options?.code ?? (success ? 1 : 0);
-        const flag = options?.flag ?? 0;
-        writer.writeCompressed(code & 0xff, 1);
-        writer.writeCompressed(flag & 0xff, 1);
-        const ipU32 = this.ipv4ToU32BE(worldIp);
-        writer.writeCompressed(ipU32 >>> 0, 4);
-        writer.writeCompressed(worldPort & 0xffff, 2);
-        return writer.data;
+        const bs = new NativeBitStream();
+        try {
+            bs.writeU8(RakNetMessageId.ID_WORLD_LOGIN_RETURN);
+            const code = options?.code ?? (success ? 1 : 0);
+            const flag = options?.flag ?? 0;
+            bs.writeCompressedU8(code & 0xff);
+            bs.writeCompressedU8(flag & 0xff);
+            const ipU32 = this.ipv4ToU32BE(worldIp);
+            bs.writeCompressedU32(ipU32 >>> 0);
+            bs.writeCompressedU16(worldPort & 0xffff);
+            return bs.getData();
+        } finally {
+            bs.destroy();
+        }
     }
 
     /**
      * Build 0x7B WORLD_SELECT packet
      */
     buildWorldSelect(playerId: number, worldId: number, worldInst: number): Buffer {
-        const writer = new MsbBitStream();
-        writer.writeByte(RakNetMessageId.ID_WORLD_SELECT);
-        writer.writeCompressed(playerId >>> 0, 4);
-        writer.writeCompressed(4, 1); // worldCount or type?
-        writer.writeCompressed(worldId & 0xff, 1);
-        writer.writeCompressed(worldInst & 0xff, 1);
-        return writer.data;
+        const bs = new NativeBitStream();
+        try {
+            bs.writeU8(RakNetMessageId.ID_WORLD_SELECT);
+            bs.writeCompressedU32(playerId >>> 0);
+            bs.writeCompressedU8(4); // worldCount or type?
+            bs.writeCompressedU8(worldId & 0xff);
+            bs.writeCompressedU8(worldInst & 0xff);
+            return bs.getData();
+        } finally {
+            bs.destroy();
+        }
     }
 
     // =========================================================================
@@ -916,51 +877,6 @@ export class LoginHandler {
             return connection.worldSelectWorldInst;
         }
         return 0;
-    }
-
-    private readCompressedUInt(stream: MsbBitStream, size: number): number {
-        const comp = stream.readCompressed(size);
-        let value = 0;
-        let factor = 1;
-        for (let i = 0; i < size; i++) {
-            value += comp.readByte() * factor;
-            factor *= 256;
-        }
-        return value >>> 0;
-    }
-
-    private readBoundedBytes(stream: MsbBitStream, maxLen: number): Buffer<ArrayBuffer> {
-        if (maxLen <= 1) return Buffer.alloc(0);
-        const bits = Math.floor(Math.log2(maxLen)) + 1;
-        const len = stream.readBits(bits);
-        const rawLen = Math.max(0, len);
-        const safeLen = Math.min(rawLen, maxLen - 1);
-        const bytes: number[] = [];
-        for (let i = 0; i < rawLen; i++) {
-            const byte = stream.readByte();
-            if (i < safeLen) {
-                bytes.push(byte);
-            }
-        }
-        return Buffer.from(bytes) as Buffer<ArrayBuffer>;
-    }
-
-    private readBoundedString(stream: MsbBitStream, maxLen: number): string {
-        return this.readBoundedBytes(stream, maxLen).toString('latin1');
-    }
-
-    private writeBoundedString(stream: MsbBitStream, value: string, maxLen: number): void {
-        if (maxLen <= 1) return;
-        const raw = Buffer.from(value ?? '', 'latin1');
-        let length = raw.length;
-        if (length >= maxLen) {
-            length = maxLen - 1;
-        }
-        const bits = Math.floor(Math.log2(maxLen)) + 1;
-        stream.writeBits(length, bits);
-        for (let i = 0; i < length; i++) {
-            stream.writeByte(raw[i]);
-        }
     }
 
     private ipv4ToU32BE(value: string): number {

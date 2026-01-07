@@ -839,6 +839,35 @@ export class NativeBitStream {
         return buf;
     }
 
+    /**
+     * Read a length-prefixed string.
+     * @param maxLen Maximum length (determines bit count for length prefix)
+     */
+    readString(maxLen: number, encoding: BufferEncoding = 'latin1'): string {
+        this.ensureAlive();
+        if (maxLen <= 1) return '';
+        const bits = Math.floor(Math.log2(maxLen)) + 1;
+        const lenBuf = this.readBits(bits, false);
+        const len = lenBuf[0] & ((1 << bits) - 1);
+        if (len === 0) return '';
+        return this.readBytes(len).toString(encoding);
+    }
+
+    /**
+     * Write a length-prefixed string.
+     * @param value String to write
+     * @param maxLen Maximum length (determines bit count for length prefix)
+     */
+    writeString(value: string, maxLen: number): void {
+        this.ensureAlive();
+        if (maxLen <= 1) return;
+        const raw = Buffer.from(value ?? '', 'latin1');
+        const len = Math.min(raw.length, maxLen - 1);
+        const bits = Math.floor(Math.log2(maxLen)) + 1;
+        this.writeBits(Buffer.from([len]), bits, false);
+        if (len > 0) this.writeBytes(raw.subarray(0, len));
+    }
+
     alignReadToByteBoundary(): void {
         this.ensureAlive();
         lib.symbols.rak_bs_align_read_to_byte_boundary(this.handle);
