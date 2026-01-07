@@ -153,7 +153,6 @@ export class LoginHandler {
      * Handle 0x6C - Login request with username
      *
      * Packet format (ID_LOGIN_REQUEST 0x6C):
-     *   - preFlag (1 bit, observed 0)
      *   - username (Huffman with raw u32 BE bit count prefix)
      *   - postFlag (1 bit, observed 0)
      *   - clientVersion (raw u16, 16 bits)
