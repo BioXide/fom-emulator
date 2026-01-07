@@ -159,7 +159,7 @@ export class LoginHandler {
      *
      * See: Docs/Packets/ID_LOGIN_REQUEST.md
      */
-    private handleLoginRequest(data: Uint8Array, connection: Connection): LoginResponse | null {
+    private handleLoginRequest(data: Uint8Array, connection: Connection) {
         const packetId = data[0];
         this.log(`[Login] 0x${packetId.toString(16)} from ${connection.key} (${data.length} bytes)`);
 
@@ -387,7 +387,7 @@ export class LoginHandler {
      *
      * See: Docs/Packets/ID_LOGIN.md
      */
-    private handleLoginAuth(data: Uint8Array, connection: Connection): LoginResponse | null {
+    private handleLoginAuth(data: Uint8Array, connection: Connection) {
         this.log(`[Login] 0x6E from ${connection.key} (${data.length} bytes)`);
 
         if (connection.loginPhase !== LoginPhase.USER_SENT && !this.config.acceptLoginAuthWithoutUser) {
