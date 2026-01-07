@@ -34,9 +34,9 @@ Naming focuses on **player data first** (stats/inventory/abilities), then UI/cac
           - +0x18  u32
           - +0x1C  u32
           - +0x20  u8
-          - +0x24  AbilityTable[12] (12 * 48 bytes = 0x240)
+          - +0x24  SkillTable[12] (12 * 48 bytes = 0x240)
                    * entry[0] dword used as present flag
-                   * entry[+4] u16 abilityId (used by WorldLogin_GrantAbilityIfAllowed)
+                   * entry[+4] u16 skillId (used by WorldLogin_GrantAbilityIfAllowed)
           - +0x27C  sub‑block (0x94)
           - +0x2F8  sub‑block (0x122)
           - +0x41C  vec<44B> (sub_1002E560)
@@ -79,13 +79,13 @@ Naming focuses on **player data first** (stats/inventory/abilities), then UI/cac
 0x0C9C  PlayerTableI       WorldLogin_ReadTableI
         - header: 4x u8 + u32c
         - count: u32c
-        - entry: u32c id, u8 type?, u32c value, u8, u8, u8 (inserted into 20‑byte records)
+        - entry: u32c id, u8 type?, u32c value, u8, u8, u8 (inserted into 20-byte records)
 0x4A80  PlayerVecJ         WorldLogin_ReadCompactVec3F (same as F)
 0x4A90  flag4              bit
 0x4A94  PlayerListK        WorldLogin_ReadListK
         - header: u32c + sub_100D0E60 (unknown)
         - count: u32c
-        - entry: u16c id, u8 value, 1‑bit flag
+        - entry: u16c id, u8 value, 1-bit flag
 ```
 
 ## Handler usage (key fields)
@@ -93,9 +93,11 @@ Naming focuses on **player data first** (stats/inventory/abilities), then UI/cac
 - On success, the handler sets spawn/rot into `g_pLocalPlayerObj`:
   - `spawnX_u16/spawnY_u16/spawnZ_u16`
   - `hasOverrideSpawn` + `overrideYawDeg_u16` choose override spawn/rotation.
-- `PlayerListK` looks like flag/id list (likely quests, achievements, or unlocks).
-- `PlayerTableI` looks like id/value table (likely inventory/currency or items).
-- `worldLoginAbilityBuf` is used to grant abilities:
+- `PlayerTableI`: no downstream consumers found in Object.lto yet (only read + rank adjust helpers).
+- `PlayerListK`: no downstream consumers found in Object.lto yet (read-only).
+- `worldLoginSkillTable` is used to grant abilities (skills).
+  - Evidence: `WorldLogin_GrantAbilityIfAllowed` calls `sub_100108D0`, which triggers
+    "ProcessValue - Skill {0} not handled!" on unknown IDs.
   - entries 5..16 via `WorldLogin_GetAbilityEntry`, then `WorldLogin_GrantAbilityIfAllowed`.
 
 ## Open items

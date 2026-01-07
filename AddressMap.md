@@ -5040,7 +5040,7 @@ Helpers (CShell):
 - UI msgs observed in Handle_ID_WORLD_LOGIN failure paths: 1721, 1722, 1724.
 
 Helpers (msgId 0x79 payload):
-- 0x100EAB40 WorldLogin_ReadProfileBlockA (core player profile + ability table)
+- 0x100EAB40 WorldLogin_ReadProfileBlockA (core player profile + skill table)
 - 0x1007A6D0 WorldLogin_CopyProfileBlockA (copies profile into server state)
 - 0x100EAA40 WorldLogin_ReadProfileBlockB
 - 0x100C8D20 WorldLogin_ReadProfileBlockC (bitfield stats)
@@ -5050,6 +5050,36 @@ Helpers (msgId 0x79 payload):
 - 0x100172C0 WorldLogin_ReadEntryG
 - 0x100DEC50 WorldLogin_ReadTableI (id/value table)
 - 0x100E9090 WorldLogin_ReadListK (u16/u8/bit list)
+- 0x100EBA60 WorldLogin_ReadSkillTable
+- 0x100DB820 WorldLogin_ReadSkillEntry
+- 0x100DB940 WorldLogin_ReadSkillSlot
+- 0x100CE500 WorldLogin_ReadSkillTreeList
+- 0x100CC190 WorldLogin_ReadSkillTree
+- 0x100CB2A0 WorldLogin_SkillTree_Insert
+- 0x100EBAB0 WorldLogin_SkillTable_IsEmpty
+- 0x100DEBC0 WorldLogin_TableI_Insert
+- 0x100DEE50 WorldLogin_TableI_AddEntry (guards id < 0x74, inserts)
+- 0x100DEE90 WorldLogin_TableI_Merge (merge/update by id)
+- 0x100DCA80 WorldLogin_TableI_FindById (linear scan; compares entryId)
+- 0x100DCCA0 WorldLogin_TableI_GetMaxRank (max byte+12 across entries)
+- 0x100DD0F0 WorldLogin_TableI_DecrementRank (byte+12--)
+- 0x100DD180 WorldLogin_TableI_IncrementRank (byte+12++)
+- 0x100DE2F0 Vec20_CopyN
+- 0x100DE370 Vec20_AppendN
+- 0x100DE510 Vec20_InsertN
+- 0x100DEB50 Vec20_InsertPos
+- 0x100E6990 Vec4_CopyN
+- 0x100E79E0 Vec4_InsertN
+- 0x100CDB40 Vec44_InsertN
+- 0x100CDAE0 Vec44_InsertPos
+- 0x100CD600 Vec44_InsertN_Internal
+- 0x100CC830 Vec44_CopyN_Throw
+- 0x100CBFC0 Vec44_CopyRange
+- 0x1002D370 SkillEntry_Copy
+- 0x1002C4F0 SkillEntry_InitTree
+- 0x1002C080 SkillEntry_CopyTree
+- 0x1002BD40 SkillEntry_TreeCopyRecurse
+- 0x100DD350 Skill_ProcessValue (logs "ProcessValue - Skill {0} not handled!")
 
 
 
