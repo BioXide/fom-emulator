@@ -17,17 +17,19 @@
  */
 
 import {
-    RakNetMessageId,
     RakMessageId,
-    LoginRequestReturnStatus,
-    LoginReturnStatus,
-    AccountType,
     type RakSystemAddress,
     NativeBitStream,
     encodeString,
     decodeString,
     buildWorldLoginBurst,
 } from '@openfom/networking';
+import {
+    RakNetMessageId,
+    LoginRequestReturnStatus,
+    LoginReturnStatus,
+    AccountType,
+} from '@openfom/packets';
 import { Connection, LoginPhase } from '../network/Connection';
 import { APARTMENT_WORLD_TABLE } from '../world/WorldRegistry';
 import { info as logInfo } from '@openfom/utils';

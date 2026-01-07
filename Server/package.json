@@ -8,7 +8,7 @@
     "start:master": "bun run --cwd apps/master start",
     "start:world": "bun run --cwd apps/world start",
     "build:native": "cd packages/networking/native && build.bat",
-    "typecheck": "bun run --cwd packages/utils typecheck && bun run --cwd packages/networking typecheck && bun run --cwd apps/master typecheck && bun run --cwd apps/world typecheck"
+    "typecheck": "bun run --cwd packages/utils typecheck && bun run --cwd packages/networking typecheck && bun run --cwd packages/packets typecheck && bun run --cwd apps/master typecheck && bun run --cwd apps/world typecheck"
   },
   "devDependencies": {
     "@types/bun": "latest",

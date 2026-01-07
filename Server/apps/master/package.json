@@ -9,12 +9,9 @@
     "start": "bun run src/index.ts",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
+"dependencies": {
     "@openfom/networking": "workspace:*",
+    "@openfom/packets": "workspace:*",
     "@openfom/utils": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.3.0"
   }
 }
