@@ -155,12 +155,11 @@ export class LoginHandler {
      *
      * Packet format (ID_LOGIN_REQUEST 0x6C):
      *   - username (Huffman with raw u32 BE bit count prefix)
-     *   - postFlag (1 bit, observed 0)
      *   - clientVersion (raw u16, 16 bits)
      *
      * See: Docs/Packets/ID_LOGIN_REQUEST.md
      */
-    private handleLoginRequest(data: Uint8Array, connection: Connection): LoginResponse | null {
+    private handleLoginRequest(data: Uint8Array, connection: Connection) {
         const packetId = data[0];
         this.log(`[Login] 0x${packetId.toString(16)} from ${connection.key} (${data.length} bytes)`);
 
@@ -185,7 +184,7 @@ export class LoginHandler {
             actualPacketId = data[9];
         }
 
-        // Parse 0x6C packet - Raw U32BE format with preFlag/postFlag bits
+        // Parse 0x6C packet
         if (actualPacketId === RakNetMessageId.ID_LOGIN_REQUEST) {
             const bs = new NativeBitStream(Buffer.from(data.slice(dataOffset)), true);
             try {
@@ -195,12 +194,8 @@ export class LoginHandler {
                 username = decodeString(bs, 2048);
                 this.log(`[Login6C] Huffman decoded: user="${username}"`);
 
-                // Read postFlag bit (observed 0)
-                const postFlag = bs.readBit();
-                this.log(`[Login6C] postFlag=${postFlag}`);
-
                 // Read u16 token/version (16 bits, MSB-first)
-                clientVersion = bs.readU16();
+                clientVersion = bs.readCompressedU16();
                 parseSuccess = true;
                 this.log(`[Login6C] Raw U32BE format: user="${username}" ver=${clientVersion}`);
             } catch (err) {
@@ -392,7 +387,7 @@ export class LoginHandler {
      *
      * See: Docs/Packets/ID_LOGIN.md
      */
-    private handleLoginAuth(data: Uint8Array, connection: Connection): LoginResponse | null {
+    private handleLoginAuth(data: Uint8Array, connection: Connection) {
         this.log(`[Login] 0x6E from ${connection.key} (${data.length} bytes)`);
 
         if (connection.loginPhase !== LoginPhase.USER_SENT && !this.config.acceptLoginAuthWithoutUser) {
