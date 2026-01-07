@@ -22,13 +22,7 @@ hook tooling, and reverse-engineering notes/mappings.
 This work is being done to preserve Face of Mankind and to help keep its community alive. The goal is to give players the tools, 
 documentation, and practical guidance they need to run their own Face of Mankind private servers with the least amount of friction. 
 By making it possible for others easily to spin up servers, test changes, and share improvements, the project supports long-term preservation 
-and puts the game’s future in the hands of the people who care about it most.
-
-We’ll also be using this project to further explore AI-driven development.
-
-There are also plans for an official FoTD private server, but with hardcoded legacy factions.
-Alongside that, custom factions would be supported, but gated behind staff approval to ensure new factions fit the games's and lore.
-More will be shared as we get further to a playable version of the game.
+and puts the game’s future in the hands of the community, we’ll also be using this project to further explore AI-driven development.
 
 ## Quick Start
 
