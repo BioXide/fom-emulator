@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0Server\\Master_TS"
+cd /d "%~dp0Server"
 
 if not exist node_modules (
   echo [Server] Installing dependencies...
@@ -65,13 +65,25 @@ goto parseargs
 
 :parsedargs
 
-if "%PORT%"=="" set PORT=61000
 if "%MODE%"=="" set MODE=master
+if "%PORT%"=="" (
+  if /I "%MODE%"=="world" (
+    set PORT=62000
+  ) else (
+    set PORT=61000
+  )
+)
 
 set SERVER_MODE=%MODE%
-if not "%WORLD_PORT%"=="" set WORLD_PORT=%WORLD_PORT%
-if not "%WORLD_IP%"=="" set WORLD_IP=%WORLD_IP%
+
+if not defined FOM_INI (
+  if /I "%MODE%"=="world" (
+    set FOM_INI=%CD%\\apps\\master\\fom_world.ini
+  ) else (
+    set FOM_INI=%CD%\\apps\\master\\fom_server.ini
+  )
+)
 
 echo [Server] Starting server mode=%SERVER_MODE% on UDP port %PORT%...
-echo [Server] Config: Server\\Master_TS\\fom_server.ini (or FOM_INI override)
-bun run dev
+echo [Server] Config: %FOM_INI%
+bun run --cwd apps\\master start

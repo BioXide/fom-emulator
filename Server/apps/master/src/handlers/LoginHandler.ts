@@ -18,6 +18,7 @@
 
 import {
     RakNetMessageId,
+    RakMessageId,
     LoginRequestReturnStatus,
     LoginReturnStatus,
     AccountType,
@@ -494,7 +495,7 @@ export class LoginHandler {
             connection.loginPhase = LoginPhase.USER_SENT;
         }
 
-        // In master mode, send 0x6F after authentication decision.
+        // In master mode, send 0x6F after authentication decision (+ 0x7B world select on success).
         if (this.config.serverMode === 'master') {
             const playerId = status === LoginReturnStatus.SUCCESS
                 ? this.resolveWorldSelectPlayerId(connection)
@@ -511,10 +512,24 @@ export class LoginHandler {
             });
 
             this.log(`[Login6E] -> 0x6F status=${status} playerId=${playerId} world=${worldId}:${worldInst}`);
-            return {
-                data: loginReturn,
-                address: connection.address,
-            };
+            const responses: LoginResponse[] = [
+                {
+                    data: loginReturn,
+                    address: connection.address,
+                },
+            ];
+
+            if (status === LoginReturnStatus.SUCCESS) {
+                const worldSelect = this.buildWorldSelect(playerId, worldId, worldInst);
+                connection.worldSelectSent = true;
+                this.log(`[Login6E] -> 0x7B subId=4 playerId=${playerId} world=${worldId}:${worldInst}`);
+                responses.push({
+                    data: worldSelect,
+                    address: connection.address,
+                });
+            }
+
+            return responses;
         }
 
         return null;
@@ -732,12 +747,49 @@ export class LoginHandler {
                     return null;
                 }
 
+                // 0x73 codes -> UI messages (see Docs/Packets/ID_WORLD_LOGIN_RETURN.md)
+                // 1: success (connect to world)
+                // 2: server unavailable
+                // 3: faction not available
+                // 4: world full
+                // 6: faction privileges revoked
+                // 7: vortex gate range error
+                // 8: retry later
+                // TODO: This is where the DB read will happen to retrieve account details.
+                const code = this.resolveWorldLoginReturnCode(connection);
+                switch (code) {
+                    case 1:
+                        // success
+                        break;
+                    case 2:
+                        // server unavailable
+                        break;
+                    case 3:
+                        // faction not available
+                        break;
+                    case 4:
+                        // world full
+                        break;
+                    case 6:
+                        // faction privileges revoked
+                        break;
+                    case 7:
+                        // vortex gate range error
+                        break;
+                    case 8:
+                        // retry later
+                        break;
+                    default:
+                        // unknown error
+                        break;
+                }
                 const response = this.buildWorldLoginReturn(
-                    true,
+                    code === 1,
                     this.config.worldIp,
                     this.config.worldPort,
+                    { code, flag: 0xff },
                 );
-                this.log(`[Login72] -> 0x73 world=${this.config.worldIp}:${this.config.worldPort}`);
+                this.log(`[Login72] -> 0x73 code=${code} world=${this.config.worldIp}:${this.config.worldPort}`);
                 return {
                     data: response,
                     address: connection.address,
@@ -747,11 +799,18 @@ export class LoginHandler {
             // In world mode, accept and send LithTech burst.
             connection.authenticated = true;
             connection.loginPhase = LoginPhase.IN_WORLD;
+            if (!connection.worldTimeOrigin) {
+                connection.worldTimeOrigin = Date.now();
+            }
+            connection.worldLastHeartbeatAt = 0;
 
             const responses: LoginResponse[] = [];
 
             // Build 0x73 response.
-            const response = this.buildWorldLoginReturn(true, this.config.worldIp, this.config.worldPort);
+            const response = this.buildWorldLoginReturn(true, this.config.worldIp, this.config.worldPort, {
+                code: 1,
+                flag: 0xff,
+            });
             responses.push({
                 data: response,
                 address: connection.address,
@@ -766,10 +825,11 @@ export class LoginHandler {
             const lithWorldId = worldId || 16;
 
             const lithBurst = buildWorldLoginBurst(seq, clientId, objectId, lithWorldId);
+            const wrappedBurst = Buffer.concat([Buffer.from([RakMessageId.USER_PACKET_ENUM]), lithBurst]);
             this.log(`[Login72] -> LithTech burst (${lithBurst.length} bytes)`);
 
             responses.push({
-                data: lithBurst,
+                data: wrappedBurst,
                 address: connection.address,
             });
 
@@ -796,7 +856,7 @@ export class LoginHandler {
         try {
             bs.writeU8(RakNetMessageId.ID_WORLD_LOGIN_RETURN);
             const code = options?.code ?? (success ? 1 : 0);
-            const flag = options?.flag ?? 0;
+            const flag = options?.flag ?? 0xff;
             bs.writeCompressedU8(code & 0xff);
             bs.writeCompressedU8(flag & 0xff);
             const ipU32 = this.ipv4ToU32BE(worldIp);
@@ -816,13 +876,38 @@ export class LoginHandler {
         try {
             bs.writeU8(RakNetMessageId.ID_WORLD_SELECT);
             bs.writeCompressedU32(playerId >>> 0);
-            bs.writeCompressedU8(4); // worldCount or type?
+            bs.writeCompressedU8(4); // subId=4 -> worldId/worldInst
             bs.writeCompressedU8(worldId & 0xff);
             bs.writeCompressedU8(worldInst & 0xff);
             return bs.getData();
         } finally {
             bs.destroy();
         }
+    }
+
+    private resolveWorldLoginReturnCode(connection: Connection): number {
+        // Scaffolding: map future server-side checks to client UI codes.
+        // TODO: replace these stubs with real validation signals.
+        if (!connection.authenticated) {
+            return 2; // server unavailable / not authorized
+        }
+        switch (connection.worldConnectStage) {
+            case 2:
+                return 2; // server unavailable
+            case 3:
+                return 3; // faction not available
+            case 4:
+                return 4; // world full
+            case 6:
+                return 6; // faction privileges revoked
+            case 7:
+                return 7; // vortex gate range error
+            case 8:
+                return 8; // retry later
+            default:
+                break;
+        }
+        return 1;
     }
 
     // =========================================================================

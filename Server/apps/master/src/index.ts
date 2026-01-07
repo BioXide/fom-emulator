@@ -14,15 +14,19 @@ import {
     RakPeer,
     RakReliability,
     RakPriority,
+    RakMessageId,
     type RakSystemAddress,
     addressToIp,
     addressToString,
+    BitStreamWriter,
+    buildLithTechGuaranteedPacket,
+    LithTechMessageId,
     PacketLogger,
     PacketDirection,
 } from '@openfom/networking';
 import { configureLogger, debug as logDebug, error as logError, info as logInfo, warn as logWarn } from '@openfom/utils';
 import { loadRuntimeConfig } from './config';
-import { ConnectionManager } from './network/Connection';
+import { ConnectionManager, LoginPhase } from './network/Connection';
 import { LoginHandler } from './handlers/LoginHandler';
 import { createPacketHandlers } from './handlers/registerHandlers';
 import { loadRsaKeyFromJson, type RsaKey, type RsaKeyJson } from './utils/Rsa';
@@ -172,6 +176,46 @@ function sendReliable(data: Buffer, address: RakSystemAddress): boolean {
     return success;
 }
 
+function sendUnreliable(data: Buffer, address: RakSystemAddress): boolean {
+    // Log outbound packet before send to keep file log complete.
+    const addrIp = addressToIp(address);
+    const connection = connections.get(address);
+    const outgoingPacket = {
+        timestamp: new Date(),
+        direction: PacketDirection.OUTGOING,
+        address: addrIp,
+        port: address.port,
+        data,
+        connectionId: connection?.id,
+    };
+    try {
+        const logged = packetLogger.log(outgoingPacket);
+        packetLogger.logAnalysis(outgoingPacket, logged);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        PacketLogger.globalNote(
+            `[Error] packetLog SEND addr=${addrIp}:${address.port} len=${data.length} err=${msg}`,
+        );
+    }
+
+    const success = peer.send(
+        data,
+        RakPriority.LOW,
+        RakReliability.UNRELIABLE,
+        0,
+        address,
+        false,
+    );
+    if (config.debug) {
+        const addr = addressToString(address);
+        const msgId = data[0];
+        logDebug(
+            `[Server] SEND (UNREL) 0x${msgId.toString(16).padStart(2, '0')} to ${addr} (${data.length} bytes) - ${success ? 'OK' : 'FAIL'}`,
+        );
+    }
+    return success;
+}
+
 // =============================================================================
 // Packet Handlers
 // =============================================================================
@@ -247,6 +291,46 @@ async function mainLoop() {
 
             // Get next packet
             packet = peer.receive();
+        }
+
+        // World-mode heartbeat: send periodic unguaranteed updates.
+        if (config.serverMode === 'world') {
+            const now = Date.now();
+            const heartbeatMs = 3000;
+            for (const conn of connections.getAll()) {
+                if (conn.loginPhase !== LoginPhase.IN_WORLD) {
+                    continue;
+                }
+                if (conn.worldTimeOrigin <= 0) {
+                    conn.worldTimeOrigin = now;
+                }
+                if (conn.worldLastHeartbeatAt && (now - conn.worldLastHeartbeatAt) < heartbeatMs) {
+                    continue;
+                }
+                conn.worldLastHeartbeatAt = now;
+
+                const elapsedSec = (now - conn.worldTimeOrigin) / 1000;
+                const payloadWriter = new BitStreamWriter(12);
+                payloadWriter.writeUInt16(0xffff);
+                payloadWriter.writeBits(0, 4);
+                const timeBuf = Buffer.alloc(4);
+                timeBuf.writeFloatLE(elapsedSec, 0);
+                payloadWriter.writeBytes(timeBuf);
+                const payload = payloadWriter.toBuffer();
+                const payloadBits = payloadWriter.position;
+
+                const seq = conn.lithTechOutSeq;
+                conn.lithTechOutSeq = (seq + 1) & 0x1fff;
+                const packet = buildLithTechGuaranteedPacket(seq, [
+                    {
+                        msgId: LithTechMessageId.MSG_UNGUARANTEEDUPDATE,
+                        payload,
+                        payloadBits,
+                    },
+                ]);
+                const wrapped = Buffer.concat([Buffer.from([RakMessageId.USER_PACKET_ENUM]), packet]);
+                sendUnreliable(wrapped, conn.address);
+            }
         }
 
         // Small sleep to prevent busy-waiting

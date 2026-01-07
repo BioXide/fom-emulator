@@ -113,7 +113,7 @@ export function resolveIniPath(): string {
     }
     const candidates = [
         path.resolve(process.cwd(), 'fom_server.ini'),
-        path.resolve(process.cwd(), 'Server', 'Master_TS', 'fom_server.ini'),
+        path.resolve(process.cwd(), 'Server', 'apps', 'master', 'fom_server.ini'),
     ];
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) {
