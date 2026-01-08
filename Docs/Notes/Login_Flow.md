@@ -1,13 +1,42 @@
 # Login Flow (Client <-> Master <-> World)
 
 ## Overview (packet sequence)
+CLIENT              MASTER SERVER           WORLD SERVER
+   |                      |                       |
+   |-- 0x6C LOGIN_REQ --->|                       |
+   |<-- 0x6D LOGIN_RET ---|                       |
+   |-- 0x6E LOGIN ------->|                       |
+   |<-- 0x6F LOGIN_RET ---|                       |
+   |<-- 0x7B WORLD_SEL ---|                       |
+   |-- 0x72 WORLD_LOGIN ->|                       |
+   |<-- 0x73 (IP:Port) ---|                       |
+   |                      |                       |
+   |-- [RakNet Connect] ----------------------->|
+   |<-- [RakNet Accept] ------------------------|
+   |-- 0x72 WORLD_LOGIN ----------------------->|
+   |<-- LithTech Burst (NO 0x73!) --------------|
 
-CLIENT (fom_client.exe + CShell)          MASTER (Server)             WORLD (world server)
------------------------------------------------------------------------------------------------
-[UI] Login_OnSubmit
-  -> build 0x6C LOGIN_REQUEST (user + token)  ------------------------------>
-                                                     validate / parse
-  <------------------------------- 0x6D LOGIN_REQUEST_RETURN (session_str w/ world=IP:PORT)
+CLIENT                                     WORLD SERVER
+   |                                             |
+   |-- [RakNet Connect w/ password] ----------->|
+   |<-- [RakNet Accept] ------------------------|
+   |                                             |
+   |-- 0x72 WORLD_LOGIN ----------------------->|
+   |                                             |
+   |<-- LithTech Burst (SMSG_PACKETGROUP) ------|
+   |       SMSG_NETPROTOCOLVERSION (4)           |
+   |       SMSG_YOURID (12)                      |
+   |       SMSG_CLIENTOBJECTID (7)               |
+   |       SMSG_LOADWORLD (6)                    |
+   |                                             |
+   |-- MSG_ID 0x09 CONNECTSTAGE=0 ------------->|
+   |                                             |
+   |<-- SMSG_UPDATE (8) spawn packet -----------|
+   |       GroupObjUpdate w/ CF_NEWOBJECT        |
+   |       + POSITION + ROTATION + MODELINFO     |
+   |                                             |
+   |<-- SMSG_UNGUARANTEEDUPDATE (10) heartbeat -|
+   |       (periodic, 10-20 Hz)                  |
 
 ClientNetworking_HandleLoginRequestReturn_6D
   -> build 0x6E LOGIN (auth packet; session_str + client fields) ---------->
@@ -213,61 +242,54 @@ RakNet peer list is empty. Reliable frames from unknown peers are rejected befor
 
 ## Packet layouts (summary)
 
-### 0x6C LOGIN_REQUEST (client -> master, fom_client)
-Fields (high level):
-- Huffman-compressed username string
-- u16 token (raw u16 written by client)
-- (timestamp header optional, RakNet)
+### 0x6C LOGIN_REQUEST (client -> master)
+- username (Huffman)
+- u16 token
+- optional timestamp header (RakNet)
 
-### 0x6D LOGIN_REQUEST_RETURN (master -> client, CShell)
-Read order:
+### 0x6D LOGIN_REQUEST_RETURN (master -> client)
 - u8c status
-- session_str (LTClient read string, max 2048 bytes)
+- session_str (LTClient read string, max 2048)
 
-### 0x6E LOGIN (client -> master, fom_client)
-Built in ClientNetworking_HandleLoginRequestReturn_6D:
-- Huffman string: username (ClientNetworking +0x91)
-- bounded string (max 64): sessionHashHex (MD5 hex chain from HandleLoginRequestReturn_6D)
-- u32 x3: clientInfoU32[3] (std::vector<uint32_t> from ClientNetworking +0x59C)
-- Huffman string: macAddress ("xx-xx-xx-xx-xx-xx", GetAdaptersInfo)
-- 4x pairs: bounded string(64) + bounded string(32) [currently empty in build path]
-- bounded string (max 64): hostName (ClientNetworking +0x111)
-- Huffman string: computerName (GetComputerNameA, 32 bytes)
-- blobFlag bit; if set: 0x400 blob bytes (ClientNetworking +0x191) + u32 blobU32 (ClientNetworking +0x594)
+### 0x6E LOGIN (client -> master)
+- username (Huffman)
+- sessionHashHex (bounded string, max 64)
+- clientInfoU32[3]
+- macAddress (Huffman, "xx-xx-xx-xx-xx-xx")
+- 4x pairs: bounded string(64) + bounded string(32)
+- hostName (bounded string, max 64)
+- computerName (Huffman, max 32)
+- blobFlag bit; if set: 0x400 blob bytes + u32 blobU32
 
-### 0x72 WORLD_LOGIN (client -> world, CShell)
-Write order:
+### 0x72 WORLD_LOGIN (client -> master/world)
 - u8c worldId
 - u8c worldInst
 - u32c playerId
 - u32c worldConst (= 0x13BC52)
 
-### 0x7B WORLD_SELECT (server -> client, CShell)
+### 0x7B WORLD_SELECT (master -> client)
 Read order:
 - u32c playerId
-- u8c  subId (type)
-Type-specific payload:
-- subId=2 -> ItemsAdded payload (inventory list)
+- u8c  subId
+Type payload:
+- subId=2 -> ItemsAdded payload
 - subId=3 -> u32c + u8c + u8c
-- subId=4 -> u8c worldId, u8c worldInst (triggers SharedMem[0x1EEC1/0x1EEC2] + state=1)
-- subId=5 -> no extra
-- subId=6 -> list payload at +0x460 (Packet_ID_7B_ReadSubId6List); routed to WorldSelect_HandleSubId6Payload
+- subId=4 -> u8c worldId, u8c worldInst (sets SharedMem 0x1EEC1/0x1EEC2, state=1)
+- subId=6 -> list payload (WorldSelect_HandleSubId6Payload)
 - subId=7 -> u8c worldId, u8c worldInst
 
-### 0x73 WORLD_LOGIN_RETURN (server -> client, CShell)
+### 0x73 WORLD_LOGIN_RETURN (master -> client)
 Read order:
 - u8c code
 - u8c flag
 - u32c worldIp
 - u16c worldPort
-Code handling (HandlePacket_ID_WORLD_LOGIN_RETURN_73):
-- code==1: LoginUI_SetMessageText(1725, "D2D2D200"), then WorldLoginReturn_HandleAddress(worldIp, worldPort).
-- code in {2,3,4,6,7}: LoginUI_SetMessageText(1723/1734/1724/1735/1739, "FF000000"), then LoginUI_ShowMessage(5).
-- code==8: schedules retry (WorldLoginReturn_ScheduleRetry now+5s).
-- default: LoginUI_SetMessageText(1722, "FF000000") + logs unknown return code.
-Notes:
-- worldIp is read as u32c from big-endian bitstream; encode IP as 0x7F000001 for 127.0.0.1.
-- Emulator note: current master implementation sends 0x73 only after receiving 0x72 (world login), not immediately after 0x6E/0x7B.
+Code handling (CShell):
+- code==1: UI msg 1725, then Connect(worldIp, worldPort)
+- code in {2,3,4,6,7}: UI msg 1723/1734/1724/1735/1739, then ShowMessage(5)
+- code==8: retry after 5s
+- default: UI msg 1722
+Note: encode IP as u32c big-endian (127.0.0.1 => 0x7F000001).
 
 ## World login state machine (CShell WorldLogin_StateMachineTick)
 SharedMem[0x1EEC0] values:
