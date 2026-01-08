@@ -52,6 +52,8 @@ export {
 
 export { IdWorldSelectPacket, WorldSelectSubId, type IdWorldSelectData } from './ID_WORLD_SELECT';
 
+export { IdWorldServicePacket, type IdWorldServiceData } from './ID_WORLDSERVICE';
+
 export { IdUserPacket, type IdUserPacketData } from './ID_USER_PACKET';
 
 export { LtGuaranteedPacket, type LtGuaranteedData } from './LT_GUARANTEED';

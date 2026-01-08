@@ -30,7 +30,6 @@ import { loadRsaKeyFromJson, type RsaKeyJson } from './utils/Rsa';
 import rsaKeyJson from './fom_private_key.json' with { type: 'json' };
 
 const runtime = loadRuntimeConfig();
-const iniPath = runtime.iniPath;
 const config = runtime.server;
 const packetLogConfig = runtime.packetLog;
 
@@ -86,7 +85,6 @@ if (rsaKey) {
 logInfo('='.repeat(60));
 logInfo(' FoM Server Emulator V2 - Native RakNet');
 logInfo('='.repeat(60));
-logInfo(`  Ini: ${iniPath}`);
 logInfo(`  Mode: ${config.serverMode}`);
 logInfo(`  Port: ${config.port}`);
 logInfo(`  Max Connections: ${config.maxConnections}`);

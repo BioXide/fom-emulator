@@ -56,6 +56,9 @@ export enum RakNetMessageId {
 
     // User packets start here (LithTech game layer)
     ID_USER_PACKET_ENUM = 0x86,
+
+    // World service packets (post-login gameplay)
+    ID_WORLDSERVICE = 0xa5,         // 165 - Client -> World (world service interaction)
 }
 
 /**

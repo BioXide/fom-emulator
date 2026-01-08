@@ -51,6 +51,7 @@
 !/Server/**
 /Server/**/logs/
 /Server/**/logs/**
+/Server/**/.env
 /Server/**/native/Build/
 /Server/**/native/Build/**
 /Server/**/temp-check/

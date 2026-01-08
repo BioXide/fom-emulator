@@ -22,6 +22,7 @@ import {
     IdRegisterClientPacket,
     IdRegisterClientReturnPacket,
     IdWorldSelectPacket,
+    IdWorldServicePacket,
     WorldSelectSubId,
     LtGuaranteedPacket,
     MsgUnguaranteedUpdate,
@@ -58,7 +59,6 @@ PacketLogger.setConsoleMirrorEcho(!packetLogConfig.quiet);
 logInfo('='.repeat(60));
 logInfo(' FoM World Server');
 logInfo('='.repeat(60));
-logInfo(`  Ini: ${runtime.iniPath}`);
 logInfo(`  Port: ${config.port}`);
 logInfo(`  Max Connections: ${config.maxConnections}`);
 logInfo(`  Debug: ${config.debug}`);
@@ -303,6 +303,13 @@ async function mainLoop() {
 
                 case 0x6b: {
                     handleWorldAuth(Buffer.from(packet.data), packet.systemAddress);
+                    break;
+                }
+
+                case RakNetMessageId.ID_WORLDSERVICE: {
+                    const worldServicePacket = IdWorldServicePacket.decode(Buffer.from(packet.data));
+                    const key = getConnectionKey(packet.systemAddress);
+                    logInfo(`[World] 0xa5 WORLDSERVICE from ${key}: ${worldServicePacket.toString()}`);
                     break;
                 }
 
