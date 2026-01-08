@@ -29,8 +29,8 @@ Packet_ID_LOGIN_RETURN
 │
 └── [if playerID != 0]
     ├── accountType: uint8                       // AccountType (compressed)
-    ├── field4_0x439: bool                       // bit
-    ├── field5_0x43a: bool                       // bit
+    ├── isFullAccount: bool                      // bit - enables full account features (faction levels, consumables)
+    ├── hasCharFlags: bool                       // bit - character data flags (written to SharedMem[0x1DE7E])
     ├── clientVersion: uint16                    // compressed
     ├── isBanned: bool                           // bit
     │
@@ -97,8 +97,8 @@ Packet_ID_LOGIN_RETURN
 | status        | `LoginReturnStatus`   | 0x430  | 0x1   |
 | playerID      | `uint32_t`            | 0x434  | 0x4   |
 | accountType   | `AccountType`         | 0x438  | 0x1   |
-| field4_0x439  | `bool`                | 0x439  | 0x1   |
-| field5_0x43a  | `bool`                | 0x43A  | 0x1   |
+| isFullAccount | `bool`                | 0x439  | 0x1   | Enables "Full account" features (faction levels, consumables) |
+| hasCharFlags  | `bool`                | 0x43A  | 0x1   | Character data flags (written to SharedMem[0x1DE7E]) |
 | clientVersion | `uint16_t`            | 0x43C  | 0x2   |
 | isBanned      | `bool`                | 0x43E  | 0x1   |
 | banLength     | `char[16]`            | 0x43F  | 0x10  |
@@ -257,6 +257,23 @@ Entry in the `allowedRanks` vector.
 - `allowedRanks` controls which faction ranks can enter (if faction matches `ownerFactionID`)
 - The `Allow Factionless` checkbox (string 941) is stored as a special entry in `allowedFactions`
 
+### `isFullAccount` Flag (offset 0x439)
+
+This boolean controls "Full account" feature access:
+- **Storage**: Written to StatGroup 6 via `EncVar_WriteStatGroup6()` @ 0x6588c4a0
+- **Check**: Read via `Player_CheckStatGroup6()` @ 0x65736bf0, returns `true` if value == 1
+- **Effects**:
+  - When `false`, UI appends " (Full account only)" to restricted faction level options in `RelationsUI_PopulateLevelDropdown`
+  - Affects `ItemTemplate_CanUse()` - certain consumable items require full account
+  - Gate for faction level selection (levels 10+ require full account for certain categories)
+
+### `hasCharFlags` Flag (offset 0x43A)
+
+This boolean stores character-related flags:
+- **Storage**: Written to SharedMem[0x1DE7E] via `SharedMem_WriteCharFlagsDword()` @ 0x6588c4c0
+- **Check**: Read at 0x657bdf88 in item usage UI code
+- **Effects**: Controls character state visibility in item usage validation
+
 ## UI Message Mapping (CShell)
 
 These are the UI strings shown for 0x6F status values (string IDs from CRes.dll).
@@ -340,8 +357,8 @@ bool __thiscall FOM::Packets::Packet_ID_LOGIN_RETURN::Read(Packet_ID_LOGIN_RETUR
   RakNet::BitStream::ReadCompressed_T_uint((BitStream *)this_00, &this->playerID);
   if (this->playerID != 0) {
     RakNet::BitStream::ReadCompressed((BitStream *)this_00, &this->accountType, 8, true);
-    VariableSizedPacket::ReadBit(&this->base, &this->field4_0x439);
-    VariableSizedPacket::ReadBit(&this->base, &this->field5_0x43a);
+    VariableSizedPacket::ReadBit(&this->base, &this->isFullAccount);   // enables full account features
+    VariableSizedPacket::ReadBit(&this->base, &this->hasCharFlags);   // character data flags
     RakNet::BitStream::ReadCompressed_T_ushort((BitStream *)this_00, &this->clientVersion);
     VariableSizedPacket::ReadBit(&this->base, &this->isBanned);
     if (this->isBanned != false) {
@@ -388,13 +405,13 @@ void __thiscall FOM::Packets::Packet_ID_LOGIN_RETURN::Write(Packet_ID_LOGIN_RETU
   if (this->playerID != 0) {
     local_8 = (Packet_ID_LOGIN_RETURN *)CONCAT31(local_8._1_3_, this->accountType);
     RakNet::BitStream::WriteCompressed((BitStream *)this_00, (uchar *)&local_8, 8, true);
-    if (this->field4_0x439 == false) {
+    if (this->isFullAccount == false) {      // full account features flag
       RakNet::BitStream::Write0((BitStream *)this_00);
     }
     else {
       RakNet::BitStream::Write1((BitStream *)this_00);
     }
-    if (this->field5_0x43a == false) {
+    if (this->hasCharFlags == false) {       // character data flags
       RakNet::BitStream::Write0((BitStream *)this_00);
     }
     else {

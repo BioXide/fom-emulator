@@ -97,8 +97,17 @@ export interface IdLoginReturnData {
     status: LoginReturnStatus;
     playerId: number;
     accountType?: AccountType;
-    field4?: boolean;
-    field5?: boolean;
+    /**
+     * Enables "Full account" features like faction level selection and certain consumable items.
+     * When false, UI shows "(Full account only)" on restricted options.
+     * Stored in StatGroup 6, checked via Player_CheckStatGroup6().
+     */
+    isFullAccount?: boolean;
+    /**
+     * Character data flags, written to SharedMem[0x1DE7E].
+     * Used in item usage UI code to check character state.
+     */
+    hasCharFlags?: boolean;
     clientVersion?: number;
     isBanned?: boolean;
     banLength?: string;
@@ -126,8 +135,8 @@ export class IdLoginReturnPacket extends Packet {
     status: LoginReturnStatus;
     playerId: number;
     accountType: AccountType;
-    field4: boolean;
-    field5: boolean;
+    isFullAccount: boolean;
+    hasCharFlags: boolean;
     clientVersion: number;
     isBanned: boolean;
     banLength: string;
@@ -143,8 +152,8 @@ export class IdLoginReturnPacket extends Packet {
         this.status = data.status;
         this.playerId = data.playerId;
         this.accountType = data.accountType ?? AccountType.FREE;
-        this.field4 = data.field4 ?? false;
-        this.field5 = data.field5 ?? false;
+        this.isFullAccount = data.isFullAccount ?? false;
+        this.hasCharFlags = data.hasCharFlags ?? false;
         this.clientVersion = data.clientVersion ?? 0;
         this.isBanned = data.isBanned ?? false;
         this.banLength = data.banLength ?? '';
@@ -165,8 +174,8 @@ export class IdLoginReturnPacket extends Packet {
 
             if (this.playerId !== 0) {
                 bs.writeCompressedU8(this.accountType & 0xff);
-                bs.writeBit(this.field4);
-                bs.writeBit(this.field5);
+                bs.writeBit(this.isFullAccount);
+                bs.writeBit(this.hasCharFlags);
                 bs.writeCompressedU16(this.clientVersion & 0xffff);
                 bs.writeBit(this.isBanned);
 

@@ -4989,6 +4989,106 @@ Helpers (CShell):
 
 
 
+### CharFlags System (CShell.dll)
+
+Character flags bitmask stored at SharedMem[0x1EA43]:
+
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x1018B2D0 | 0x0018B2D0 | CharFlags_CheckFlag | Checks if flag bit is set in SharedMem[0x1EA43] | decomp | high |
+| 0x1018B2F0 | 0x0018B2F0 | CharFlags_SetFlag | Sets flag bit (OR operation) in SharedMem[0x1EA43] | decomp | high |
+| 0x1018B320 | 0x0018B320 | CharFlags_ClearFlag | Clears flag bit (AND NOT) in SharedMem[0x1EA43] | decomp | high |
+| 0x1018B350 | 0x0018B350 | CharFlags_ClearAll | Clears all flags (writes 0) to SharedMem[0x1EA43] | decomp | high |
+
+Known CharFlags bits:
+- **Bit 2 (0x2) = CF_SPLIT_PENDING**: Set when item split request sent (Item_SendSplitRequest @ 0x1010AF10), cleared on response (PacketHandler_ID_SPLIT_CONTAINER @ 0x1018EF60). Prevents double-clicking item split dialog.
+
+
+
+### StatGroup System (CShell.dll encrypted stats)
+
+Encrypted variable manager stores game stats in indexed groups. Write via `StatGroup_WriteByIndex`, read via `StatGroup_Read`.
+
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x101C32F0 | 0x001C32F0 | StatGroup_Read | Reads encrypted stat from StatGroup[index] into buffer | decomp | high |
+| 0x101C3BD0 | 0x001C3BD0 | StatGroup_WriteByIndex | Writes value to StatGroup[index] | decomp | high |
+| 0x101C3160 | 0x001C3160 | StatGroup_WriteGroup | Writes entire group buffer (15 floats) | decomp | high |
+| 0x101C32C0 | 0x001C32C0 | StatGroup_GetPtr | Gets pointer to StatGroup[index] data | decomp | med |
+
+StatGroup index meanings (confirmed by xrefs):
+
+| Index | Purpose | Write Function | Read Usage | Evidence |
+|---|---|---|---|---|
+| 1 | Player stats array (level, camera mode, etc) | - | Player_CheckLevelCap, ClientGame_Update | decomp |
+| 2 | Movement/input flags | EncVar_WriteStatGroup2 @ 0x1019E470 | Recoil_ApplyStatGroup2, PlayerInput_UpdateAndSend | decomp |
+| 3 | Nearby object type (vehicle state) | EncVar_WriteStatGroup3 @ 0x1019E590 | Player_UpdateNearbyObjects | decomp |
+| 4 | Movement speed multiplier (stamina-based) | EncVar_WriteStatGroup4 @ 0x1019E5B0 | PlayerInput_UpdateAndSend | decomp |
+| 5 | AccountType (0=FREE, 1=BASIC, 2=PREMIUM, 3=ADMIN) | EncVar_WriteAccountType @ 0x1018C480 | Player_GetAccountType @ 0x10032D40 | decomp |
+| 6 | IsFullAccount flag (enables premium features) | EncVar_WriteIsFullAccount @ 0x1018C4A0 | Player_IsFullAccount @ 0x10036BF0 | decomp |
+| 7 | Unknown (reset to 0 in PlayerStats_Reset) | EncVarMgr_WriteStatGroup7 @ 0x100598B0 | - | decomp |
+| 8 | Unknown | EncVar_WriteStatGroup8 @ 0x101BFEE0 | - | decomp |
+
+StatGroup 2 (movement flags) is also used by:
+- Player_OnDeath @ 0x101A2980: resets to 0
+- PlayerInput_UpdateAndSend @ 0x101A2CE0: sets movement bits from input
+
+StatGroup init in StatGroupMgr_InitGroups @ 0x101C3E50 shows type codes:
+- Index 0: type 0 (int)
+- Index 1: type 2 (array)
+- Index 2: type 6 (flags)
+- Index 3: type 0 (int)
+- Index 4: type 4 (float)
+- Index 5: type 4 (float) - AccountType
+- Index 6: type 1 (bool) - IsFullAccount
+- Index 7: type 1 (bool)
+- Index 8: type 1 (bool)
+
+
+
+### SharedMem Index Reference (CShell.dll)
+
+Key SharedMem indices used by LOGIN_RETURN and world login:
+
+| Index | Hex | Purpose | Set By |
+|---|---|---|---|
+| 0x1 | 0x1 | defaultWorldId (starmap UI) | LOGIN_RETURN handler |
+| 0x54 | 0x54 | Login complete flag | LOGIN_RETURN handler |
+| 0x5A | 0x5A | noCharacter flag (1=needs creation) | LOGIN_RETURN handler |
+| 0x5B | 0x5B | playerId | LOGIN_RETURN handler |
+| 0x77 | 0x77 | apartmentWorldSelect | WorldSelect_ApplyApartmentInfo |
+| 0x78 | 0x78 | apartmentId (1..24) | WorldSelect_ApplyApartmentInfo |
+| 0x1CEC2 | 118466 | World login state (0-3) flag | GameState_EnterGameplay |
+| 0x1D2AD | 119469 | Float (pitch?) | PlayerStats_Reset |
+| 0x1D698 | 120472 | Movement key W | PlayerInput_UpdateAndSend |
+| 0x1D699 | 120473 | Movement key S | PlayerInput_UpdateAndSend |
+| 0x1D69A | 120474 | Movement key A | PlayerInput_UpdateAndSend |
+| 0x1D69B | 120475 | Movement key D | PlayerInput_UpdateAndSend |
+| 0x1D6A5 | 120485 | Float (stamina current?) | ClientGame_Update |
+| 0x1D6A6 | 120486 | Float (stamina max=250.0) | PlayerStats_Reset |
+| 0x1D6A7 | 120487 | Unknown dword | PlayerStats_Reset |
+| 0x1D6A8 | 120488 | Flag (=1 on reset) | PlayerStats_Reset |
+| 0x1D6A9 | 120489 | Flag | Player_OnDeath |
+| 0x1DA94 | 121492 | Unknown (StatGroup init) | StatGroupMgr_InitGroups |
+| 0x1DE7E | 122494 | hasCharFlags from LOGIN_RETURN | LOGIN_RETURN handler |
+| 0x1DE7F | 122495 | Unknown (StatGroup init) | StatGroupMgr_InitGroups |
+| 0x1E269 | 123497 | Unknown (StatGroup init) | StatGroupMgr_InitGroups |
+| 0x1E653 | 124499 | Unknown (StatGroup init) | StatGroupMgr_InitGroups |
+| 0x1EA3E | 125502 | Unknown dword | PlayerStats_Reset |
+| 0x1EA43 | 125507 | CharFlags bitmask | CharFlags_* functions |
+| 0x1EA44 | 125508 | CharState (inventory unlock) | InventoryClient_Ctor |
+| 0x1EA48 | 125512 | Unknown (StatGroup init) | StatGroupMgr_InitGroups |
+| 0x1EEBE | 126654 | Flag | Player_OnDeath |
+| 0x1EEBF | 126655 | Unknown dword | PlayerStats_Reset |
+| 0x1EEC0 | 126656 | World login state (0-3) | World login state machine |
+| 0x1EEC1 | 126657 | worldId for connection | UI / LOGIN_RETURN |
+| 0x1EEC2 | 126658 | worldInst | UI / LOGIN_RETURN |
+| 0x1EEC3 | 126659 | Flag | PlayerStats_Reset |
+| 0x1EEC4 | 126660 | Flag | Player_OnDeath |
+| 0x3047 | 12359 | StatGroup 1 base (player stats, 0x6A entries, 0x1A8 bytes) | StatGroupMgr_InitGroups |
+
+
+
 ## Object.lto (image base 0x10000000)
 
 
