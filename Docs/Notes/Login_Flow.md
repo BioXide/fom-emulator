@@ -293,7 +293,6 @@ Note: encode IP as u32c big-endian (127.0.0.1 => 0x7F000001).
 
 ## World login state machine (CShell WorldLogin_StateMachineTick)
 SharedMem[0x1EEC0] values:
-- 0: idle
 - 1: pending send (wait until not connected, not blocked, and retry time elapsed)
 - 2: waiting for g_LTClient->IsConnected() -> then set state=3
 - 3: load world assets, then clear state and worldId/worldInst
@@ -326,28 +325,3 @@ Load step (state==3 path):
 - 0x78: apartmentId selector (1..24)
 - 0x74: apartment flag set to 1 before load
 
-## 0x7B Packet Structure Requirements
-
-The 0x7B packet handler (HandlePacket_ID_WORLD_SELECT_7B @ 0x65899270) receives a LithTech
-message wrapper structure, NOT raw packet data:
-
-```
-LithTech Message Wrapper (passed as 'payload' to handler):
-  +0x00: vtable pointer
-  +0x08: message type
-  +0x24 (36): payload length (DWORD)
-  +0x2C (44): pointer to payload data (void*)
-  ...
-```
-
-The packet reader VariableSizedPacket::Read (@ 0x6570c6c0) does:
-```c
-BitStream_InitFromBuffer(v5, *(void**)(a2 + 44), *(DWORD*)(a2 + 36), 0);
-```
-
-This expects the wrapper structure. Raw RakNet packet data does NOT have this layout,
-which causes a crash when trying to dereference invalid pointers.
-
-To send 0x7B properly, it must go through the LithTech guaranteed message layer,
-wrapped in ID_USER (0x86). Implementation requires understanding how LithTech 
-messages encapsulate RakNet-style packet IDs (not typical MSG_* IDs)
