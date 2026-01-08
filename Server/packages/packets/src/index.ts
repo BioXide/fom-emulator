@@ -43,6 +43,13 @@ export {
     type IdWorldLoginReturnData,
 } from './ID_WORLD_LOGIN_RETURN';
 
+export { IdRegisterClientPacket, type IdRegisterClientData } from './ID_REGISTER_CLIENT';
+
+export {
+    IdRegisterClientReturnPacket,
+    type IdRegisterClientReturnData,
+} from './ID_REGISTER_CLIENT_RETURN';
+
 export { IdWorldSelectPacket, WorldSelectSubId, type IdWorldSelectData } from './ID_WORLD_SELECT';
 
 export { IdUserPacket, type IdUserPacketData } from './ID_USER_PACKET';

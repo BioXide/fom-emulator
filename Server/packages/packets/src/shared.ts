@@ -50,6 +50,8 @@ export enum RakNetMessageId {
     ID_LOGIN_TOKEN_CHECK = 0x70,    // 112 - Bidirectional (token validation)
     ID_WORLD_LOGIN = 0x72,          // 114 - Client -> World (world entry request)
     ID_WORLD_LOGIN_RETURN = 0x73,   // 115 - Server -> Client (world address redirect)
+    ID_REGISTER_CLIENT = 0x78,      // 120 - Client -> World (world registration after LithTech burst)
+    ID_REGISTER_CLIENT_RETURN = 0x79, // 121 - World -> Client (world login data / profile)
     ID_WORLD_SELECT = 0x7b,         // 123 - Server -> Client (world selection payload)
 
     // User packets start here (LithTech game layer)
@@ -104,6 +106,8 @@ export const LOGIN_PACKET_IDS = new Set<number>([
     RakNetMessageId.ID_LOGIN_TOKEN_CHECK,
     RakNetMessageId.ID_WORLD_LOGIN,
     RakNetMessageId.ID_WORLD_LOGIN_RETURN,
+    RakNetMessageId.ID_REGISTER_CLIENT,
+    RakNetMessageId.ID_REGISTER_CLIENT_RETURN,
     RakNetMessageId.ID_WORLD_SELECT,
 ]);
 
