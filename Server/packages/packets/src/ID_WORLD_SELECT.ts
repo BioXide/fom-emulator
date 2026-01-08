@@ -27,7 +27,7 @@ export interface IdWorldSelectDataOther {
 export type IdWorldSelectData = IdWorldSelectDataSubId4 | IdWorldSelectDataOther;
 
 /**
- * ID_WORLD_SELECT (0x7A) - Server -> Client
+ * ID_WORLD_SELECT (0x7B) - Server -> Client
  * See: Docs/Packets/ID_WORLD_SELECT.md
  */
 export class IdWorldSelectPacket extends Packet {
