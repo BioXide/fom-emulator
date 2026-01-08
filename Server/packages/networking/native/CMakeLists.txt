@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(RakNetFFI VERSION 1.0.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # RakNet 3.611 source directory (exact version used by FoM)
@@ -12,6 +12,16 @@ set(RAKNET_INC_DIR "${CMAKE_SOURCE_DIR}/raknet/include")
 # Collect RakNet sources
 file(GLOB RAKNET_SOURCES "${RAKNET_SRC_DIR}/*.cpp")
 file(GLOB RAKNET_HEADERS "${RAKNET_INC_DIR}/raknet/*.h")
+
+# Exclude files that have clang ADL issues (not needed for FoM emulator)
+if(APPLE)
+    list(REMOVE_ITEM RAKNET_SOURCES
+        "${RAKNET_SRC_DIR}/UDPProxyCoordinator.cpp"
+        "${RAKNET_SRC_DIR}/UDPProxyClient.cpp"
+        "${RAKNET_SRC_DIR}/UDPProxyServer.cpp"
+        "${RAKNET_SRC_DIR}/UDPForwarder.cpp"
+    )
+endif()
 
 # FFI wrapper sources
 set(FFI_SOURCES
@@ -69,7 +79,7 @@ if(UNIX AND NOT APPLE)
     
     set_target_properties(RakNetFFI PROPERTIES
         OUTPUT_NAME "raknet_ffi"
-        PREFIX "lib"
+        PREFIX ""
     )
 endif()
 
@@ -80,13 +90,20 @@ if(APPLE)
         RAKNET_FFI_EXPORTS
     )
     
+    target_compile_options(RakNetFFI PRIVATE
+        -Wno-c++11-narrowing
+        -Wno-error
+        -fpermissive
+        -Wno-error=return-type-c-linkage
+    )
+    
     target_link_libraries(RakNetFFI PRIVATE
         pthread
     )
     
     set_target_properties(RakNetFFI PROPERTIES
         OUTPUT_NAME "raknet_ffi"
-        PREFIX "lib"
+        PREFIX ""
     )
 endif()
 
