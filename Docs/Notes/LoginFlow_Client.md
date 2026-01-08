@@ -448,7 +448,7 @@ int Login_SendRequest_Throttled()
         v5 = 0.0;
       if ( v5 >= 100.0 )
       {
-        Packet_Id107_Init(v7);
+        Packet_ID_NOTIFY_107_Init(v7);
         v12 = 0;
         v9 = 1;
         v10 = 1;
@@ -578,7 +578,7 @@ int Login_SendRequest_Throttled()
 101C0636  test    ah, 1
 101C0639  jnz     short loc_101C06B0
 101C063B  lea     ecx, [ebp+var_5D4]
-101C0641  call    Packet_Id107_Init
+101C0641  call    Packet_ID_NOTIFY_107_Init
 101C0646  mov     ecx, g_pPlayerStats
 101C064C  mov     edx, 1
 101C0651  push    5Bh ; '['
@@ -659,7 +659,7 @@ void __thiscall sub_101C0820(float *this)
   {
     if ( (unsigned __int8)sub_101BFC00() )
     {
-      Packet_Id107_Init(v2);
+      Packet_ID_NOTIFY_107_Init(v2);
       v7 = 0;
       v4 = 1;
       v5 = 21;
@@ -708,7 +708,7 @@ void __thiscall sub_101C0820(float *this)
 101C087F  test    al, al
 101C0881  jz      short loc_101C08F4
 101C0883  lea     ecx, [ebp+var_5D0]
-101C0889  call    Packet_Id107_Init
+101C0889  call    Packet_ID_NOTIFY_107_Init
 101C088E  mov     ecx, g_pPlayerStats
 101C0894  mov     eax, 1
 101C0899  push    5Bh ; '['
@@ -992,12 +992,12 @@ char __thiscall Packet_6D_Read(int this, int a2)
 1018DD30  retn    4
 ```
 
-## Packet_Id107_Init (0x1000C7E0)
+## Packet_ID_NOTIFY_107_Init (0x1000C7E0)
 Role: Init packet id 0x6C struct.
 
 ### Decomp
 ```c
-char *__thiscall Packet_Id107_Init(char *this)
+char *__thiscall Packet_ID_NOTIFY_107_Init(char *this)
 {
   *(_DWORD *)this = &vtbl_Packet_Unknown0;
   *(this + 8) = 0;
@@ -1005,7 +1005,7 @@ char *__thiscall Packet_Id107_Init(char *this)
   *((_DWORD *)this + 264) = 0;
   *((_DWORD *)this + 265) = 0;
   *(this + 1064) = 107;
-  *(_DWORD *)this = &vtbl_Packet_Id107;
+  *(_DWORD *)this = &vtbl_Packet_ID_NOTIFY_107;
   sub_1000C580(this + 1092);
   *((_WORD *)this + 536) = 0;
   *((_DWORD *)this + 270) = 0;
@@ -1032,7 +1032,7 @@ char *__thiscall Packet_Id107_Init(char *this)
 1000C7FD  mov     [esi+420h], ebx
 1000C803  mov     [esi+424h], ebx
 1000C809  mov     byte ptr [esi+428h], 6Bh ; 'k'
-1000C810  mov     dword ptr [esi], offset vtbl_Packet_Id107
+1000C810  mov     dword ptr [esi], offset vtbl_Packet_ID_NOTIFY_107
 1000C816  call    sub_1000C580
 1000C81B  xor     eax, eax
 1000C81D  mov     [esi+430h], ax

@@ -656,7 +656,8 @@ Helper:
 |---|---|---|---|---|---|
 | 0x10147CC6 | (abs) | g_ItemVariantTable? | Packed 0x12?byte record table used by ItemVariant_FindMatchingRecord | disasm | low |
 
-### Code (login request / Packet_Id107 build)
+### Code (login request / Packet_ID_NOTIFY_107 build)
+Note: renamed from Packet_Id107; IDA names may still use the old prefix.
 | VA | RVA | Symbol | Purpose | Evidence | Conf |
 |---|---|---|---|---|---|
 | 0x101C1072 | 0x001C1072 | Login_OnSubmit | Login UI submit handler; reads user/pass fields and queues updates | decomp (user) | high |
@@ -664,39 +665,881 @@ Helper:
 | 0x10108F70 | 0x00108F70 | LoginField_QueueUpdate | Stores field ids/values into login window object + triggers apply/send | decomp (user) | med |
 | 0x101055C0 | 0x001055C0 | LoginField_ApplyString | Resolves string via engine interface; sets UI text + flags | decomp (user) | med |
 | 0x10077540 | 0x00077540 | UiText_SetValueIfChanged | Copies new string, triggers validation/callbacks | decomp (user) | low |
-| 0x101C04B0 | 0x001C04B0 | Login_SendRequest_Throttled | Builds Packet_Id107 and calls LTClient_SendPacket_BuildIfNeeded | decomp (user) | med |
-| 0x1000C7E0 | 0x0000C7E0 | Packet_Id107_Init | Initializes packet object; sets msg id byte = 107 | decomp (user) | med |
+| 0x101C04B0 | 0x001C04B0 | Login_SendRequest_Throttled | Builds Packet_ID_NOTIFY_107 and calls LTClient_SendPacket_BuildIfNeeded | decomp (user) | med |
+| 0x101C0820 | 0x001C0820 | AntiCheat_PeriodicCheck | Periodic VM-detection ping (interval=300s); if triggered sends Packet_ID_NOTIFY_107 subId=1 (optA=21, optC=playerId) | decomp (user) | med |
+| 0x1000C7E0 | 0x0000C7E0 | Packet_ID_NOTIFY_107_Init | Initializes packet object; sets msg id byte = 107 | decomp (user) | med |
 | 0x1000C770 | 0x0000C770 | Packet_WriteHeader | Initializes bitstream; writes optional header byte 0x19 + 64-bit token; writes msg id byte | decomp (user) | med |
-| 0x1000D9D0 | 0x0000D9D0 | Packet_Id107_Serialize | Builds bitstream; writes flags + optional ints + 2x2048-bit blocks | decomp (user) | med |
-| 0x1000D8B0 | 0x0000D8B0 | Packet_Id107_Read | Reads bitstream; mirrors serialize + 2x2048-bit blocks | decomp (user) | med |
+| 0x1000D9D0 | 0x0000D9D0 | Packet_ID_NOTIFY_107_Serialize | Builds bitstream; writes flags + optional ints + 2x2048-bit blocks | decomp (user) | med |
+| 0x1000D8B0 | 0x0000D8B0 | Packet_ID_NOTIFY_107_Read | Reads bitstream; mirrors serialize + 2x2048-bit blocks | decomp (user) | med |
 | 0x1000D650 | 0x0000D650 | Playerfile_BlockC0_WriteEntry | Writes one entry in Playerfile blockC0 (bitflag + u16c + 5x u8c + bitfields) | decomp (user) | low |
 | 0x1000CBF0 | 0x0000CBF0 | BitStream_WriteU16C | Writes u16 compressed to bitstream | inferred from usage | low |
 | 0x1000C870 | 0x0000C870 | BitStream_Write2048 | Wrapper: g_LTClient vtbl+0x34 (write 2048 bits) | decomp (user) | low |
 | 0x1000C8A5 | 0x0000C8A5 | BitStream_Read2048 | Wrapper: g_LTClient vtbl+0x38 (read 2048 bits) | decomp (user) | low |
-| 0x1000CB60 | 0x0000CB60 | Packet_Id107_Vtbl0 | Vtable slot +0x00 (unknown role) | vtable xref | low |
+| 0x1000CB60 | 0x0000CB60 | Packet_ID_NOTIFY_107_Vtbl0 | Vtable slot +0x00 (unknown role) | vtable xref | low |
 | 0x100065D9 | 0x000065D9 | Registry_SetUsernameValue | Writes registry value "username" (persistence) | decomp (user) | low |
 | 0x1008A0C0 | 0x0008A0C0 | LoginToken_Process | Reads LoginToken + passes to engine (pre-login flow) | decomp (user) | low |
+| 0x1008F1A0 | 0x0008F1A0 | CharacterSelectUI_SetupDisplay | Sets up character select display (window id 0) using optC + strA/strB; called by Packet_ID_NOTIFY_107 subId=325 | decomp (user) | med |
 | 0x102A64A0 | 0x002A64A0 | Ensure_BitstreamTables_Init | Wrapper; calls Init_BitstreamTables once | xrefs | low |
 | 0x10272AD0 | 0x00272AD0 | Init_BitstreamTables | Initializes large bit/lookup tables (0x102FE000+) | disasm (user) | low |
 
-#### Packet_Id107 bitstream construction (observed)
+#### Packet_ID_NOTIFY_107 bitstream construction (observed)
 
-- Packet_Id107_Serialize writes a series of presence bits for 4 optional fields: +1076, +1080, +1084, +1088; if present it writes the value (u32 for last two; compressed for first two).
+- Packet_ID_NOTIFY_107_Serialize writes a series of presence bits for 4 optional fields: +1076, +1080, +1084, +1088; if present it writes the value (u32 for last two; compressed for first two).
 - Two fixed 2048-bit blocks are appended from packet offsets +1216 and +1344 via g_LTClient vtbl+0x34 (size=2048 bits).
 - If word at +1072 == 325, an extra block is emitted via sub_1000D800(this+1092, this+12).
-- Packet_Id107_Read mirrors the serialize path: reads u16c into +1072, then 4 presence bits + fields, then reads two 2048-bit blocks via g_LTClient vtbl+0x38.
-- If +1072 == 325, Packet_Id107_Read calls Playerfile_read_blockC0(this+1092, this+12).
-- Packet_Id107_Read layout: +1072=u16 subId, +1076=u32 optA (Read_u32c_alt), +1080=u32 optB (Read_u32c_alt), +1084=u32 optC (Read_u32c), +1088=u32 optD (Read_u32c), +1216/+1344=two LTClient strings (2048 bytes each).
-- Packet_Id107_DispatchSubId: subId 44 -> inventory/production UI refresh (slot/tooltips); subId 231/270 -> worldId=4 (apartments) + SharedMem[0x77]=optC + SharedMem[0x78]=optB + set 0x1EEC0=1; subId 269 -> if optA != 0 then worldId=optA + set 0x1EEC0=1 (non-apartment world selection).
+- Packet_ID_NOTIFY_107_Read mirrors the serialize path: reads u16c into +1072, then 4 presence bits + fields, then reads two 2048-bit blocks via g_LTClient vtbl+0x38.
+- If +1072 == 325, Packet_ID_NOTIFY_107_Read calls Playerfile_read_blockC0(this+1092, this+12).
+- Packet_ID_NOTIFY_107_Read layout: +1072=u16 subId, +1076=u32 optA (Read_u32c_alt), +1080=u32 optB (Read_u32c_alt), +1084=u32 optC (Read_u32c), +1088=u32 optD (Read_u32c), +1216/+1344=two LTClient strings (2048 bytes each).
+- Packet_ID_NOTIFY_107_DispatchSubId (selected):
+- subId 1: Network_OnConnectionLost(msgId 5585).
+- subId 2: Player_OnDeath.
+- subId 3: ChatNotify (string 5316).
+- subId 4: ChatNotify "Cloning complete." + SharedMem_WriteFlag_0x94(0).
+- subId 5: ChatNotify (string 5340).
+- subId 6: Player_HasFaction -> Player_CheckSpawnState + ChatNotify (string 4321).
+- subId 7: ChatNotify (string 5336) + g_LTClient vtbl+0x4C(0x1000000).
+- subId 8: ChatNotify (string 1850).
+- subId 9: ChatNotify (string 5341/5342/5343/5344 by optA).
+- subId 0xA: ChatNotify (string 1846) + WriteLoginDataToFile("Mails\\<user>\\Outbox\\%u.fml").
+- subId 0xB/0xC/0xD: ChatNotify (string 1847/1848/1899) + g_LTClient vtbl+0x4C(0x4000).
+- subId 0xE: g_LTClient vtbl+0x4C(0x4000000).
+- subId 0xF: ChatNotify (string 1849) + g_LTClient vtbl+0x4C(1) + Sound_PlayAtPosition(60).
+- subId 0x10: Action_SendPickupPacket(optC).
+- subId 0x12: EncVar_WriteStatGroup5(optA byte2).
+- subId 0x13/0x14/0x15/0x16/0x18/0x1A/0x1C: ChatNotify (string 5347/5515/5514/5348/5349/5615/5616).
+- subId 0x17/0x19: ChatNotify (string 4324/4323) + UIWidget_InvokeVirtual5(window id 17).
+- subId 0x1B/0x1D: ChatNotify (string 4461/4462) + InventoryMgr_InvokeCommand5(window id 18).
+- subId 0x1E: ChatNotify (string 5355).
+- subId 0x1F: ChatNotify (string 4326 w/arg 30 or 4463) + g_LTClient vtbl+0x4C(64) + Data_SerializeHelper(window id 19).
+- subId 0x24: ChatNotify (string 4328) + g_LTClient vtbl+0x4C(64) + Data_SerializeHelper(window id 19).
+- subId 0x2C: ChatNotify (string 5367) + g_LTClient vtbl+0x4C(16) + HandlePacket_ID_6B_SubId44_InventoryUiRefresh(window id 21).
+- subId 0x37: ChatNotify (string 4330) + g_LTClient vtbl+0x4C(2) + MarketUI_RefreshInventory(window id 19); if window id 23 && flag at +6241 -> vtbl+4(4).
+- subId 0x3C: ChatNotify (string 4331) + g_LTClient vtbl+0x4C(2); optA==1 -> CWindowTerminalMarket_SendSearchRequest(window id 22); optB==2 -> Market_BuildSearchPacket(window id 70).
+- subId 0x3F: g_LTClient vtbl+0x4C(4096) + CharacterUI_InvokeCommand5(window id 24) + ChatNotify (string 4338).
+- subId 0x40: g_LTClient vtbl+0x4C(4096) + CharacterUI_InvokeCommand5(window id 24) + clear SharedMem strings + PlayerData_ClearEquipment + SharedMem_WritePlayerFile + set LTClient(2) flags + ChatNotify (string 4339).
+- subId 0x42: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4340) + FriendsList_HandleSelection(window id 24, optC).
+- subId 0x46: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4341) + UI_ClearTwoTextFields (window id 24).
+- subId 0x4C: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4343) + PlayerData_ClearEquipment + CharacterUI_SetupPaperdoll(window id 24; copies window id 25 data).
+- subId 0x52: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4345) + window id 24 vtbl+4(5).
+- subId 0x53: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4346).
+- subId 0x54/0x55/0x56/0x57/0x58/0x59/0x5A: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 5397/5398/5399/5400/5401/5404/5403).
+- subId 0x5B: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4347) + FriendsList_ClearSelection(window id 24).
+- subId 0x64: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4348) + FriendsList_ResetNetState(window id 24).
+- subId 0x66: ChatNotify (string 5411) + g_LTClient vtbl+0x4C(0x8000).
+- subId 0x68: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4351) + FriendsList_ToggleSortOrder(window id 24, optC, optA==0).
+- subId 0x6E: ChatNotify (string 5416) + SetFlag6408(window id 28, 0) + g_LTClient vtbl+0x4C(8).
+- subId 0x6F: g_LTClient vtbl+0x4C(8) + SetFlag6408(window id 28, 1).
+- subId 0x70: g_LTClient vtbl+0x4C(8) + ChatNotify (string 5415) + SetFlag6408(window id 28, 0).
+- subId 0x73: g_LTClient vtbl+0x4C(8) + ChatNotify (string 4362) + FriendsList_SelectById(window id 24, optC).
+- subId 0x7C: FactionUI_OnCommand(window id 29, optC).
+- subId 44: inventory/production UI refresh (slot/tooltips).
+- String ID texts resolved in the Packet_ID_6B tables below (from CRes_strings.csv, lang_id=0).
+- subId 231/270: worldId=4 (apartments) + SharedMem[0x77]=optC + SharedMem[0x78]=optB + set 0x1EEC0=1.
+- subId 269: if optA != 0 then worldId=optA + set 0x1EEC0=1 (non-apartment world selection).
+- subId 0x145 (325): CharacterSelectUI_SetupDisplay(window id 0, optC + strA/strB).
+- subId 0x14C/0x14D: localized ChatNotify (string 4467/4468, arg from string 14000+optC, float optD).
+- subId 0x153: UIWidget_SetSelectionState(window id 72) + GameStateMgr_EnterPausedState(72).
+- subId 0x15D: SharedMem_WriteString11224(strA).
+- subId 0x161/0x162: UIWidget_SetLabelText / UIWidget_ResetLabel (window id 77).
+- subId 0x163: HudNotify_ShowPPChangeMessage(window id 64, optC + optA byte2).
 - World selection can also be triggered by packet ID 0x7B (HandlePacket_ID_WORLD_SELECT_7B @ 0x10199270), which sets SharedMem[0x1EEC1/0x1EEC2] and 0x1EEC0=1.
 - Packet_WriteHeader is called before serialize: it resets/initializes the bitstream, optionally writes header byte 0x19 plus a 64-bit token (Packet_GetHeaderTokenU64 via BitStream_WriteU64) when *(this+8)==0x19, then writes msg id byte from *(this+1064).
 - Playerfile_BlockC0_WriteEntry layout (called 10x by sub_1000D800): if *(this+4)==0 or *(this+5)==0 => write bit0. Else write bit1, then u16c, then u8c for bytes +2/+3/+8/+9/+10, plus raw bitfields from +4 (7 bits), +5 (7 bits), +6 (9 bits).
 
+### Packet_ID_6B SubId Map (raw extract)
+| SubId | StrId(s) | LTFlag(s) | WindowId(s) | Calls |
+|---|---|---|---|---|
+| 1 (0x1) | 5585 |  |  | Network_OnConnectionLost |
+| 2 (0x2) |  |  |  | Player_OnDeath |
+| 3 (0x3) | 5316 |  |  |  |
+| 4 (0x4) | 15 |  |  | SharedMem_WriteFlag_0x94 |
+| 5 (0x5) | 5340 |  |  |  |
+| 6 (0x6) | 4321 |  |  | Player_HasFaction,Player_CheckSpawnState |
+| 7 (0x7) | 5336 | 0x1000000 |  |  |
+| 8 (0x8) | 1850 |  |  |  |
+| 9 (0x9) | 5341,5342,5343,5344 |  |  |  |
+| 10 (0xA) | 1846 | 0x4000 |  | SharedMem_ReadAndCallFunc,WriteLoginDataToFile |
+| 11 (0xB) | 1847 |  |  |  |
+| 12 (0xC) | 1848 |  |  |  |
+| 13 (0xD) | 1899 | 0x4000 |  |  |
+| 14 (0xE) |  | 0x4000000 |  |  |
+| 15 (0xF) | 1849 | 1 |  | Sound_PlayAtPosition |
+| 16 (0x10) |  |  |  | Action_SendPickupPacket |
+| 18 (0x12) |  |  |  | EncVar_WriteStatGroup5 |
+| 19 (0x13) | 5347 |  |  |  |
+| 20 (0x14) | 5515 |  |  |  |
+| 21 (0x15) | 5514 |  |  |  |
+| 22 (0x16) | 5348 |  |  |  |
+| 23 (0x17) | 4324 |  |  |  |
+| 24 (0x18) | 5349 |  |  |  |
+| 25 (0x19) | 4323 |  | 17 | UIWidget_InvokeVirtual5 |
+| 26 (0x1A) | 5615 |  |  |  |
+| 27 (0x1B) | 4461 |  |  |  |
+| 28 (0x1C) | 5616 |  |  |  |
+| 29 (0x1D) | 4462 |  | 18 | InventoryMgr_InvokeCommand5 |
+| 30 (0x1E) | 5355 |  |  |  |
+| 31 (0x1F) | 4326,4463 | 64 | 19 |  |
+| 32 (0x20) | 5356 |  |  |  |
+| 33 (0x21) | 5352 | 64,2 |  |  |
+| 34 (0x22) | 5361 |  |  |  |
+| 35 (0x23) | 5362 | 64 |  |  |
+| 36 (0x24) | 4328 | 64 | 19 | Data_SerializeHelper |
+| 37 (0x25) |  |  |  |  |
+| 38 (0x26) | 5363 |  |  |  |
+| 39 (0x27) | 5430 | 16 |  |  |
+| 40 (0x28) | 5431 | 16 |  |  |
+| 41 (0x29) | 5364 | 16 |  |  |
+| 42 (0x2A) | 5365 | 16 |  |  |
+| 43 (0x2B) | 5366 | 16 |  |  |
+| 44 (0x2C) | 5367 | 16 | 21 | HandlePacket_ID_6B_SubId44_InventoryUiRefresh |
+| 45 (0x2D) | 5428 | 16 |  |  |
+| 46 (0x2E) | 5377 |  |  |  |
+| 47 (0x2F) | 5357 |  |  |  |
+| 48 (0x30) | 5370 |  |  |  |
+| 49 (0x31) | 5371 |  |  |  |
+| 50 (0x32) | 5468 |  |  |  |
+| 51 (0x33) | 5466 |  |  |  |
+| 52 (0x34) | 5467 |  |  |  |
+| 53 (0x35) | 5372 |  |  |  |
+| 54 (0x36) | 5621 |  |  |  |
+| 55 (0x37) | 4330 | 2 | 23,19 | MarketUI_RefreshInventory |
+| 56 (0x38) |  |  |  |  |
+| 57 (0x39) | 5369 |  |  |  |
+| 58 (0x3A) | 5613 |  |  |  |
+| 59 (0x3B) | 5516 |  |  |  |
+| 60 (0x3C) | 4331 | 2 | 22,70 | CWindowTerminalMarket_SendSearchRequest,Market_BuildSearchPacket |
+| 61 (0x3D) | 5378,5379,5380,5381,5382,5383 |  |  |  |
+| 62 (0x3E) | 5665 |  |  |  |
+| 63 (0x3F) | 4338 | 4096 | 24 | CharacterUI_InvokeCommand5 |
+| 64 (0x40) | 4339 | 4096 | 24 | CharacterUI_InvokeCommand5,SharedMem_WriteString11224,SharedMem_WriteString126546,PlayerData_ClearEquipment,SharedMem_WritePlayerFile |
+| 65 (0x41) | 5385 | 4096 |  |  |
+| 66 (0x42) | 4340 | 4096 | 24 | FriendsList_HandleSelection |
+| 67 (0x43) | 5387 | 4096 |  |  |
+| 68 (0x44) | 5388 | 4096 |  |  |
+| 69 (0x45) | 5402 | 4096 |  |  |
+| 70 (0x46) | 4341 | 4096 | 24 | UI_ClearTwoTextFields |
+| 71 (0x47) | 5389 | 4096 |  |  |
+| 72 (0x48) | 5390 | 4096 |  |  |
+| 73 (0x49) | 5391 | 4096 |  |  |
+| 74 (0x4A) | 4342 | 4096 |  |  |
+| 75 (0x4B) | 5392 | 4096 |  |  |
+| 76 (0x4C) | 4343 | 4096 | 25,24 | PlayerData_ClearEquipment,CharacterUI_SetupPaperdoll |
+| 77 (0x4D) | 5393 | 4096 |  |  |
+| 78 (0x4E) | 5394 | 4096 |  |  |
+| 79 (0x4F) | 5395 | 4096 |  |  |
+| 80 (0x50) | 4344 | 4096 |  |  |
+| 81 (0x51) | 5396 | 4096 |  |  |
+| 82 (0x52) | 24,4345 | 4096 |  |  |
+| 83 (0x53) | 4346 | 4096 |  |  |
+| 84 (0x54) | 5397 | 4096 |  |  |
+| 85 (0x55) | 5398 | 4096 |  |  |
+| 86 (0x56) | 5399 | 4096 |  |  |
+| 87 (0x57) | 5400 | 4096 |  |  |
+| 88 (0x58) | 5401 | 4096 |  |  |
+| 89 (0x59) | 5404 | 4096 |  |  |
+| 90 (0x5A) | 5403 | 4096 |  |  |
+| 91 (0x5B) | 4347 | 4096 | 24 | FriendsList_ClearSelection |
+| 92 (0x5C) | 5405 | 4096 |  |  |
+| 93 (0x5D) |  | 4096,0x8000 |  |  |
+| 94 (0x5E) | 5520 | 4096 |  |  |
+| 95 (0x5F) | 5521 | 0x200000 |  |  |
+| 96 (0x60) | 5658 | 0x200000 |  |  |
+| 97 (0x61) | 5408 | 4096 |  |  |
+| 98 (0x62) | 5409 | 4096 |  |  |
+| 99 (0x63) | 5410 | 4096 |  |  |
+| 100 (0x64) | 4348 | 4096 | 24 | FriendsList_ResetNetState |
+| 101 (0x65) | 4349 | 4096 |  |  |
+| 102 (0x66) | 5411 | 0x8000 |  |  |
+| 103 (0x67) | 4350 | 0x8000 |  |  |
+| 104 (0x68) | 4351 | 4096 | 24 | FriendsList_ToggleSortOrder |
+| 105 (0x69) | 5412 | 4096 |  |  |
+| 106 (0x6A) | 5413 | 0x200000 |  |  |
+| 107 (0x6B) | 4359 | 0x200000 |  |  |
+| 108 (0x6C) | 4360 | 0x200000 |  |  |
+| 109 (0x6D) | 5414 | 0x200000 |  |  |
+| 110 (0x6E) | 5416 | 8 | 28 | SetFlag6408 |
+| 111 (0x6F) |  | 8 | 28 | SetFlag6408 |
+| 112 (0x70) | 5415 | 8 | 28 | SetFlag6408 |
+| 113 (0x71) | 4361 | 8 |  |  |
+| 114 (0x72) | 5417 | 8 |  |  |
+| 115 (0x73) | 4362 | 8 | 24 | FriendsList_SelectById |
+| 116 (0x74) | 5423 | 8 |  |  |
+| 117 (0x75) | 5432 |  |  |  |
+| 118 (0x76) |  |  |  |  |
+| 119 (0x77) |  |  |  |  |
+| 120 (0x78) |  |  |  |  |
+| 121 (0x79) |  |  |  |  |
+| 122 (0x7A) |  |  |  |  |
+| 123 (0x7B) |  |  |  |  |
+| 124 (0x7C) |  |  | 29 | FactionUI_OnCommand |
+| 125 (0x7D) | 5436 |  |  |  |
+| 126 (0x7E) | 5687 |  |  |  |
+| 127 (0x7F) | 5437 |  |  |  |
+| 128 (0x80) | 5445 |  |  |  |
+| 129 (0x81) | 5440 |  |  |  |
+| 130 (0x82) | 5439 |  |  |  |
+| 131 (0x83) | 5438 |  |  |  |
+| 132 (0x84) |  |  |  |  |
+| 133 (0x85) | 5454,5645 | 2048 |  |  |
+| 134 (0x86) | 5589 | 2048 |  |  |
+| 135 (0x87) | 33,5455 | 4096 |  |  |
+| 136 (0x88) | 4368 | 4096 | 33,24 | FriendsList_AddOrUpdateEntry |
+| 137 (0x89) | 5509 | 4096 |  |  |
+| 138 (0x8A) |  | 4096 | 24 | FriendsList_RemoveEntry |
+| 139 (0x8B) | 5458 | 4096 |  |  |
+| 140 (0x8C) | 5459 | 4096 |  |  |
+| 141 (0x8D) |  | 4096 | 33 | UIWidget_OnConfirmSelection |
+| 142 (0x8E) | 5508 | 4096 |  |  |
+| 143 (0x8F) | 4399 | 4096 | 24 | FriendsList_UpdateCounter |
+| 144 (0x90) | 4369 | 32 |  |  |
+| 145 (0x91) | 5462 | 32 |  |  |
+| 146 (0x92) | 4370 | 2048 | 32 | SharedMem_ReadDword_this |
+| 147 (0x93) |  |  |  |  |
+| 148 (0x94) |  |  |  |  |
+| 149 (0x95) |  |  |  |  |
+| 150 (0x96) |  | 0x2000000 | 35 |  |
+| 151 (0x97) |  |  | 35 | CWindowTerminalChemicalLab_StartProduction |
+| 152 (0x98) |  |  | 35 |  |
+| 153 (0x99) | 5482 | 1024 |  |  |
+| 154 (0x9A) | 5483 |  |  |  |
+| 155 (0x9B) | 5484 | 1024 |  |  |
+| 156 (0x9C) | 5485 | 1024 |  |  |
+| 157 (0x9D) | 5486 | 1024 |  |  |
+| 158 (0x9E) | 5487 | 1024 |  |  |
+| 159 (0x9F) | 4385 | 1024 |  |  |
+| 160 (0xA0) | 4386 | 1024 |  |  |
+| 161 (0xA1) | 4387 | 1024 |  |  |
+| 162 (0xA2) | 5490 | 1024 |  |  |
+| 163 (0xA3) | 5492 | 1024 |  |  |
+| 164 (0xA4) | 5496 | 1024 |  |  |
+| 165 (0xA5) | 5497 | 1024 |  |  |
+| 166 (0xA6) | 4389 | 1024 | 36 | SharedMem_WriteCharStateFlag |
+| 167 (0xA7) | 5498 | 1024 |  |  |
+| 168 (0xA8) | 4390 | 1024 | 36 |  |
+| 169 (0xA9) | 4391 | 1024 | 36 | SharedMem_WriteCharStateFlag,UICmd_InvokeCommand5 |
+| 170 (0xAA) | 4392 | 1024 | 36 |  |
+| 171 (0xAB) | 5499 | 1024 |  |  |
+| 172 (0xAC) | 5500 | 1024 | 36 | SharedMem_WriteCharStateFlag |
+| 173 (0xAD) | 4393 | 1024 | 36 | UICmd_InvokeCommand6,SharedMem_WriteCharStateFlag |
+| 174 (0xAE) | 5501 | 1024 |  |  |
+| 175 (0xAF) | 37,4394 | 1024 |  |  |
+| 176 (0xB0) | 36,4395 | 1024 |  |  |
+| 177 (0xB1) |  |  |  |  |
+| 178 (0xB2) |  |  |  |  |
+| 179 (0xB3) | 4398 |  |  |  |
+| 180 (0xB4) | 5502 | 0x200000 |  |  |
+| 181 (0xB5) |  | 0x200000 | 27 |  |
+| 182 (0xB6) | 5503 | 0x200000 |  |  |
+| 183 (0xB7) | 5504 | 0x200000 |  |  |
+| 184 (0xB8) | 5506 | 1024 |  |  |
+| 185 (0xB9) | 4402 | 4096 |  |  |
+| 186 (0xBA) | 5456 | 4096 |  |  |
+| 187 (0xBB) | 5511 | 4096 |  |  |
+| 188 (0xBC) | 5512 | 4096 |  |  |
+| 189 (0xBD) | 5513 | 4096 |  |  |
+| 190 (0xBE) | 1876,1877 | 4096 |  |  |
+| 191 (0xBF) | 4403 | 4096 |  |  |
+| 192 (0xC0) | 4404 | 2 | 38 | CWindowProductionRecycle_CopySkillsFromMarket |
+| 193 (0xC1) | 5407 | 2 |  |  |
+| 194 (0xC2) | 5407 |  |  |  |
+| 195 (0xC3) | 5518 |  |  |  |
+| 196 (0xC4) |  |  |  | SharedMem_WriteString126546 |
+| 197 (0xC5) |  |  |  |  |
+| 198 (0xC6) | 5524 |  |  |  |
+| 199 (0xC7) | 4406 |  |  |  |
+| 200 (0xC8) | 5454 |  |  |  |
+| 201 (0xC9) | 5595 |  |  |  |
+| 202 (0xCA) | 4407 | 8 |  |  |
+| 203 (0xCB) | 4469 | 8 | 41 |  |
+| 204 (0xCC) | 41,42,43,68,5454 | 8 |  |  |
+| 205 (0xCD) | 41,42,43,68,79,4408,4409 | 8 |  |  |
+| 206 (0xCE) | 5442,5525 |  |  |  |
+| 207 (0xCF) | 4409 | 8 | 42 |  |
+| 208 (0xD0) | 5530 |  |  |  |
+| 209 (0xD1) | 5532,5666,5667,50000 | 8 |  |  |
+| 210 (0xD2) | 46,4416 | 0x20000 |  |  |
+| 211 (0xD3) | 5533 |  |  |  |
+| 212 (0xD4) | 5650 |  |  |  |
+| 213 (0xD5) | 5651 |  |  |  |
+| 214 (0xD6) | 5534,5535 |  |  |  |
+| 215 (0xD7) |  | 0x20000 |  | SharedMem_WriteDword_0x77,SharedMem_WriteDword_0x78,LoginUI_ShowMessage |
+| 216 (0xD8) | 5536 |  |  |  |
+| 217 (0xD9) | 5537 |  |  |  |
+| 218 (0xDA) | 4417 | 0x20000 | 48 | CWindowFactionMgmt_CopyEditedToState |
+| 219 (0xDB) | 4418 | 0x20000 |  | SharedMem_ReadBool_std,SharedMem_ResetAuctionState,SharedMem_WriteWorldInst_0x1EEC2,SharedMem_ReadDword_this,SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldLoginState_0x1EEC0,LoginUI_ShowMessage |
+| 220 (0xDC) | 5539 |  |  |  |
+| 221 (0xDD) | 5664 |  |  |  |
+| 222 (0xDE) | 48,4419 | 0x20000 |  |  |
+| 223 (0xDF) | 5540 |  |  |  |
+| 224 (0xE0) | 5542 | 0x20000 |  |  |
+| 225 (0xE1) | 5543,30985 | 0x400000 |  | SharedMem_ReadDword_this |
+| 226 (0xE2) | 5544 | 0x400000 |  |  |
+| 227 (0xE3) | 4421 | 0x400000 | 49 | Sound_PlayAtPosition |
+| 228 (0xE4) | 5545,5681 | 0x400000 |  | PlayerStats_GetStatValue |
+| 229 (0xE5) | 5546 |  |  |  |
+| 230 (0xE6) | 4422 |  |  |  |
+| 231 (0xE7) |  |  |  | SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldLoginState_0x1EEC0,SharedMem_WriteDword_0x77,SharedMem_WriteDword_0x78,LoginUI_ShowMessage |
+| 232 (0xE8) | 5550 |  |  |  |
+| 233 (0xE9) | 5551 |  |  |  |
+| 234 (0xEA) | 5552 |  |  |  |
+| 235 (0xEB) | 5553 |  |  |  |
+| 236 (0xEC) | 4425 |  |  |  |
+| 237 (0xED) | 5554 |  |  |  |
+| 238 (0xEE) | 5556 |  |  |  |
+| 239 (0xEF) | 4426 |  |  |  |
+| 240 (0xF0) | 5557 |  |  |  |
+| 241 (0xF1) | 5559,18030,18031,18032,18033 | 0x8000000 |  |  |
+| 242 (0xF2) | 4427 |  |  |  |
+| 243 (0xF3) | 5560 |  |  |  |
+| 244 (0xF4) | 4428 |  |  |  |
+| 245 (0xF5) | 5561 |  |  |  |
+| 246 (0xF6) | 4429 |  |  |  |
+| 247 (0xF7) | 5562 |  |  |  |
+| 248 (0xF8) | 4430 |  |  |  |
+| 249 (0xF9) | 5563 |  |  |  |
+| 250 (0xFA) | 51,4431 | 0x8000000 |  |  |
+| 251 (0xFB) | 5564 |  |  |  |
+| 252 (0xFC) | 5565 |  |  |  |
+| 253 (0xFD) | 5566 |  |  |  |
+| 254 (0xFE) | 5567 |  |  |  |
+| 255 (0xFF) |  |  |  |  |
+| 256 (0x100) | 5568 |  |  |  |
+| 257 (0x101) | 5447 | 2048 |  |  |
+| 258 (0x102) | 4433 | 2048 |  |  |
+| 259 (0x103) | 5570 |  |  |  |
+| 260 (0x104) | 5571 |  |  |  |
+| 261 (0x105) | 5572 | 0x40000 | 53 |  |
+| 262 (0x106) | 5573 |  |  |  |
+| 263 (0x107) | 5574 | 0x40000 | 53 |  |
+| 264 (0x108) | 5581 |  |  |  |
+| 265 (0x109) |  |  |  | SharedMem_ReadBool_std,LoginField_QueueUpdate,GameStateMgr_EnterPausedState |
+| 266 (0x10A) | 4464 |  |  |  |
+| 267 (0x10B) | 4465 |  |  |  |
+| 268 (0x10C) | 4436 |  |  |  |
+| 269 (0x10D) |  |  |  | SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldInst_0x1EEC2,SharedMem_WriteWorldLoginState_0x1EEC0,LoginUI_ShowMessage |
+| 270 (0x10E) |  |  |  | SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldInst_0x1EEC2,SharedMem_WriteWorldLoginState_0x1EEC0,SharedMem_WriteDword_0x77,SharedMem_WriteDword_0x78,LoginUI_ShowMessage |
+| 271 (0x10F) | 2000 |  |  |  |
+| 272 (0x110) |  | 2048 | 55 |  |
+| 273 (0x111) | 5586 |  |  |  |
+| 274 (0x112) | 5588 |  |  |  |
+| 275 (0x113) | 5587 |  |  |  |
+| 276 (0x114) |  |  |  |  |
+| 277 (0x115) | 4444 | 2048 | 56 |  |
+| 278 (0x116) | 4445 |  |  |  |
+| 279 (0x117) | 5590 |  |  |  |
+| 280 (0x118) | 18009 |  |  |  |
+| 281 (0x119) | 5663 |  |  |  |
+| 282 (0x11A) | 5680 |  |  |  |
+| 283 (0x11B) | 18009 |  |  |  |
+| 284 (0x11C) | 5594 |  |  |  |
+| 285 (0x11D) | 5596 |  |  |  |
+| 286 (0x11E) | 5597 |  |  |  |
+| 287 (0x11F) | 5598 | 2048 |  |  |
+| 288 (0x120) | 57,4446 | 2048 |  |  |
+| 289 (0x121) | 4447 |  |  |  |
+| 290 (0x122) | 4488 |  |  |  |
+| 291 (0x123) | 5599 |  |  |  |
+| 292 (0x124) | 5617 |  |  |  |
+| 293 (0x125) | 58,4448 | 2048 |  |  |
+| 294 (0x126) | 4449 |  |  |  |
+| 295 (0x127) | 5601 |  |  |  |
+| 296 (0x128) | 5682 | 0x2000 |  |  |
+| 297 (0x129) | 5602 | 0x2000 | 59 |  |
+| 298 (0x12A) | 5603 | 4096 |  |  |
+| 299 (0x12B) | 4450 |  |  |  |
+| 300 (0x12C) | 5634,5635 |  |  |  |
+| 301 (0x12D) | 24,4471,4472 | 4096 |  |  |
+| 302 (0x12E) |  |  |  | FactionPerks_ActivatePerk |
+| 303 (0x12F) |  |  | 64 | HudNotify_ShowArrestMessage |
+| 304 (0x130) | 5604 |  |  |  |
+| 305 (0x131) | 5605 |  |  |  |
+| 306 (0x132) | 4453 |  | 62 |  |
+| 307 (0x133) | 4454 |  |  |  |
+| 308 (0x134) | 5606 |  |  |  |
+| 309 (0x135) | 5607 |  |  |  |
+| 310 (0x136) | 4455 |  | 62 |  |
+| 311 (0x137) | 4456 |  |  |  |
+| 312 (0x138) | 5608 |  |  |  |
+| 313 (0x139) | 5619 |  |  |  |
+| 314 (0x13A) | 4457 |  |  |  |
+| 315 (0x13B) | 4458 |  |  |  |
+| 316 (0x13C) | 4459 |  |  |  |
+| 317 (0x13D) | 62,4460 |  |  |  |
+| 318 (0x13E) |  |  | 62 |  |
+| 319 (0x13F) |  |  | 62 | CWindowArmory_AddLoadout |
+| 320 (0x140) | 5609 |  |  |  |
+| 321 (0x141) | 5610 | 0x10000000 |  |  |
+| 322 (0x142) | 5614 | 1024 |  |  |
+| 324 (0x144) | 5618 | 1024 |  |  |
+| 325 (0x145) |  |  | 0 | CharacterSelectUI_SetupDisplay |
+| 326 (0x146) | 5624 | 8 |  |  |
+| 327 (0x147) | 5625 | 8 |  |  |
+| 328 (0x148) | 5626 | 8 |  |  |
+| 329 (0x149) | 5627 | 8 |  |  |
+| 330 (0x14A) | 5628 | 8 |  |  |
+| 331 (0x14B) | 5657 | 8 |  |  |
+| 332 (0x14C) |  |  |  |  |
+| 333 (0x14D) |  |  |  |  |
+| 334 (0x14E) | 5629 | 2048 |  |  |
+| 335 (0x14F) | 4470 | 2048 |  |  |
+| 336 (0x150) | 5631 | 2048 |  |  |
+| 337 (0x151) | 5637 | 2048 |  |  |
+| 338 (0x152) | 5647 | 2048 |  |  |
+| 339 (0x153) |  |  | 72 | UIWidget_SetSelectionState,GameStateMgr_EnterPausedState |
+| 340 (0x154) | 5640 |  |  |  |
+| 341 (0x155) | 5641 |  |  |  |
+| 342 (0x156) | 4474 |  |  |  |
+| 343 (0x157) | 4475 |  |  |  |
+| 344 (0x158) | 5644 |  |  |  |
+| 345 (0x159) | 4476 | 2048 |  |  |
+| 346 (0x15A) | 5646 | 2048 |  |  |
+| 347 (0x15B) | 5648 | 2048 |  |  |
+| 348 (0x15C) | 5649 | 2048 |  |  |
+| 349 (0x15D) |  |  |  | SharedMem_WriteString11224 |
+| 350 (0x15E) | 5654 | 0x8000000 |  |  |
+| 351 (0x15F) | 4477 | 0x8000000 |  |  |
+| 352 (0x160) | 4478 |  |  |  |
+| 353 (0x161) |  |  | 77 | UIWidget_SetLabelText |
+| 354 (0x162) |  |  | 77 | UIWidget_ResetLabel |
+| 355 (0x163) |  |  | 64 | HudNotify_ShowPPChangeMessage |
+| 356 (0x164) | 5669 | 4096 |  |  |
+| 357 (0x165) | 5670 | 4096 |  |  |
+| 358 (0x166) | 4482 | 4096 |  |  |
+| 359 (0x167) | 5671 | 4096 |  |  |
+| 360 (0x168) | 4483 | 4096 |  |  |
+| 361 (0x169) | 5672 | 4096 |  |  |
+| 362 (0x16A) | 4484 | 4096 |  |  |
+| 363 (0x16B) | 5673 | 4096 |  |  |
+| 364 (0x16C) | 5674 | 4096 |  |  |
+| 365 (0x16D) | 5675 | 4096 |  |  |
+| 366 (0x16E) | 5678 | 4096 |  |  |
+| 367 (0x16F) | 4485 |  |  |  |
+| 368 (0x170) | 4486,4487 |  |  |  |
+| 369 (0x171) | 5677 |  |  |  |
+| 370 (0x172) |  |  |  |  |
+| 371 (0x173) | 5683 |  |  |  |
+| 372 (0x174) | 5684 |  |  |  |
+| 373 (0x175) | 5685 |  |  |  |
+| 374 (0x176) | 5686 |  |  |  |
+| 375 (0x177) |  |  |  | SkillList_ResetState |
+
+### Packet_ID_6B SubId Map (resolved strings, CRes_strings.csv lang_id=0)
+| SubId | StrId(s) | StringText(s) | Category | LTFlag(s) | WindowId(s) | Calls |
+|---|---|---|---|---|---|---|
+| 1 (0x1) | 5585 | Hack Detected! | UI/System |  |  | Network_OnConnectionLost |
+| 2 (0x2) |  |  | UI/System |  |  | Player_OnDeath |
+| 3 (0x3) | 5316 | Failed: Using this item requires a full biocell in your inventory! | UI Message |  |  |  |
+| 4 (0x4) | 15 |  | UI/System |  |  | SharedMem_WriteFlag_0x94 |
+| 5 (0x5) | 5340 | Failed to change character! Item not found! | UI Message |  |  |  |
+| 6 (0x6) | 4321 | Weapon reloaded. | Faction |  |  | Player_HasFaction,Player_CheckSpawnState |
+| 7 (0x7) | 5336 | Reload failed! | UI Message | 0x1000000 |  |  |
+| 8 (0x8) | 1850 | Error: Failed to merge the two items! | UI Message |  |  |  |
+| 9 (0x9) | 5341,5342,5343,5344 | Error: Failed to change name! | Error: That name is taken! | Error: You do not have a name change interface! | Error: You must be the leader of a faction to use this item! | UI Message |  |  |  |
+| 10 (0xA) | 1846 | Mail sent successfully. | Login | 0x4000 |  | SharedMem_ReadAndCallFunc,WriteLoginDataToFile |
+| 11 (0xB) | 1847 | Could not deliver mail! User not found! |  |  |  |  |
+| 12 (0xC) | 1848 | Could not deliver mail! |  |  |  |  |
+| 13 (0xD) | 1899 | This mail could not be sent, as the target has blocked you! |  | 0x4000 |  |  |
+| 14 (0xE) |  |  |  | 0x4000000 |  |  |
+| 15 (0xF) | 1849 | Error: Failed to move the item to the new position! | Audio | 1 |  | Sound_PlayAtPosition |
+| 16 (0x10) |  |  | UI/System |  |  | Action_SendPickupPacket |
+| 18 (0x12) |  |  | UI/System |  |  | EncVar_WriteStatGroup5 |
+| 19 (0x13) | 5347 | Failed to transmit chat message! | UI Message |  |  |  |
+| 20 (0x14) | 5515 | Error: The target is not an accepted friend! You can only send private messages to accepted friends. | UI Message |  |  |  |
+| 21 (0x15) | 5514 | Error: The target is not online! | UI Message |  |  |  |
+| 22 (0x16) | 5348 | Error: Player could not be removed from your friend list! | UI Message |  |  |  |
+| 23 (0x17) | 4324 | The player has been removed from your friend list. |  |  |  |  |
+| 24 (0x18) | 5349 | Error: Player could not be added to your friend list! | UI Message |  |  |  |
+| 25 (0x19) | 4323 | The player has been added to your friend list. | UI/System |  | 17 | UIWidget_InvokeVirtual5 |
+| 26 (0x1A) | 5615 | Error: Player could not be removed from your block list! | UI Message |  |  |  |
+| 27 (0x1B) | 4461 | The player has been removed from your block list! |  |  |  |  |
+| 28 (0x1C) | 5616 | Error: Player could not be added to your block list! | UI Message |  |  |  |
+| 29 (0x1D) | 4462 | The player has been added to your block list! | Inventory |  | 18 | InventoryMgr_InvokeCommand5 |
+| 30 (0x1E) | 5355 | Item transfer failed! | UI Message |  |  |  |
+| 31 (0x1F) | 4326,4463 | The items have been successfully transported! If you do not move them to proper storage within %1!u! minutes, they will be deleted! | The items have been successfully transported! | UI Message | 64 | 19 |  |
+| 32 (0x20) | 5356 | Item transfer failed: There is not enough space left in your storage at this destination (only %1!u! left)! | UI Message |  |  |  |
+| 33 (0x21) | 5352 | You don't have enough credits left! |  | 64,2 |  |  |
+| 34 (0x22) | 5361 | Item transfer failed: Recipient is unknown! | UI Message |  |  |  |
+| 35 (0x23) | 5362 | Item transfer failed: Recipient has not enough space left in storage (only %1!u! left)! | UI Message | 64 |  |  |
+| 36 (0x24) | 4328 | The items have been successfully transferred to the recipient. | UI Message | 64 | 19 | Data_SerializeHelper |
+| 37 (0x25) |  |  |  |  |  |  |
+| 38 (0x26) | 5363 | Items can only be transferred to other players on worlds that have a storage world service! |  |  |  |  |
+| 39 (0x27) | 5430 | Error: Failed to start production! | UI Message | 16 |  |  |
+| 40 (0x28) | 5431 | Error: You do not have enough space left in your transport storage to start this production! Items on the market and currently in-production are included in this limitataion! | UI Message | 16 |  |  |
+| 41 (0x29) | 5364 | Error: Schematic does not have enough uses for this quantity! | UI Message | 16 |  |  |
+| 42 (0x2A) | 5365 | Error: You do not have enough funds for this production! | UI Message | 16 |  |  |
+| 43 (0x2B) | 5366 | Error: You do not have the ingredients for this production! | UI Message | 16 |  |  |
+| 44 (0x2C) | 5367 | Successfully created production task! | Inventory | 16 | 21 | HandlePacket_ID_6B_SubId44_InventoryUiRefresh |
+| 45 (0x2D) | 5428 | Error: Maximum number of concurrent processes reached! Please wait until a process finishes! | UI Message | 16 |  |  |
+| 46 (0x2E) | 5377 | There has been a market error (%1!u!). Please try again later! | UI Message |  |  |  |
+| 47 (0x2F) | 5357 | Error: Buying the item failed! | UI Message |  |  |  |
+| 48 (0x30) | 5370 | The market offer could not be posted! | Market |  |  |  |
+| 49 (0x31) | 5371 | Failed! Free accounts are limited to 200 items offered on the market for sale. You can upgrade your account to a premium account to lift this limitation. | Market |  |  |  |
+| 50 (0x32) | 5468 | Error: Your duration is invalid. | UI Message |  |  |  |
+| 51 (0x33) | 5466 | Failed! You do not have enough coins to do this! | UI Message |  |  |  |
+| 52 (0x34) | 5467 | Failed! You do not have enough credits to do this! | UI Message |  |  |  |
+| 53 (0x35) | 5372 | You can't offer the same item twice on the market! | Market |  |  |  |
+| 54 (0x36) | 5621 | Error: Items of this class cannot be sold on this world! | UI Message |  |  |  |
+| 55 (0x37) | 4330 | Market offer created successfully. | Market | 2 | 23,19 | MarketUI_RefreshInventory |
+| 56 (0x38) |  |  |  |  |  |  |
+| 57 (0x39) | 5369 | No market offers found for your search criteria! | Market |  |  |  |
+| 58 (0x3A) | 5613 | Error: There is not enough space left in the destination to do this! | UI Message |  |  |  |
+| 59 (0x3B) | 5516 | Failed: There is not enough space left in your inventory! | UI Message |  |  |  |
+| 60 (0x3C) | 4331 | Transaction successful. | Market | 2 | 22,70 | CWindowTerminalMarket_SendSearchRequest,Market_BuildSearchPacket |
+| 61 (0x3D) | 5378,5379,5380,5381,5382,5383 | Your faction name must be a minimum of five characters! | Your faction name cannot begin or end with a space! | Consecutive spaces are not allowed in your faction name! | An unknown faction error has occured! | Players who are already part of a faction cannot create a faction! | The faction name chosen is already in use! | UI Message |  |  |  |
+| 62 (0x3E) | 5665 | Error: You must purchase the game to found a faction! | UI Message |  |  |  |
+| 63 (0x3F) | 4338 | Your faction has changed! | Character | 4096 | 24 | CharacterUI_InvokeCommand5 |
+| 64 (0x40) | 4339 | Your faction has been disbanded! | Character | 4096 | 24 | CharacterUI_InvokeCommand5,SharedMem_WriteString11224,SharedMem_WriteString126546,PlayerData_ClearEquipment,SharedMem_WritePlayerFile |
+| 65 (0x41) | 5385 | Failed to remove member! | Guild/Friends | 4096 |  |  |
+| 66 (0x42) | 4340 | Successfully removed member! | Guild/Friends | 4096 | 24 | FriendsList_HandleSelection |
+| 67 (0x43) | 5387 | Error: Player not found! | UI Message | 4096 |  |  |
+| 68 (0x44) | 5388 | Error: Player is already a member of another faction! | Guild/Friends | 4096 |  |  |
+| 69 (0x45) | 5402 | Error: Cannot invite blacklisted members to the faction! | Guild/Friends | 4096 |  |  |
+| 70 (0x46) | 4341 | Successfully invited member! | Guild/Friends | 4096 | 24 | UI_ClearTwoTextFields |
+| 71 (0x47) | 5389 | Error: Player already has a pending invitation to this faction! | UI Message | 4096 |  |  |
+| 72 (0x48) | 5390 | Error: Faction does not need to be founded! | UI Message | 4096 |  |  |
+| 73 (0x49) | 5391 | Error: Faction does not have enough members to be founded! | Guild/Friends | 4096 |  |  |
+| 74 (0x4A) | 4342 | Faction has been successfully founded! | UI Message | 4096 |  |  |
+| 75 (0x4B) | 5392 | An error has occured saving the emblem! | Guild/Friends | 4096 |  |  |
+| 76 (0x4C) | 4343 | Successfully saved emblem! | Guild/Friends | 4096 | 25,24 | PlayerData_ClearEquipment,CharacterUI_SetupPaperdoll |
+| 77 (0x4D) | 5393 | Error: Failed to add faction relation! | UI Message | 4096 |  |  |
+| 78 (0x4E) | 5394 | Error: Target faction not found! | UI Message | 4096 |  |  |
+| 79 (0x4F) | 5395 | Error: Cannot change relation with own faction! | UI Message | 4096 |  |  |
+| 80 (0x50) | 4344 | Successfully added relation! | UI Message | 4096 |  |  |
+| 81 (0x51) | 5396 | Error: Faction is already on the list! | UI Message | 4096 |  |  |
+| 82 (0x52) | 24,4345 | Successfully changed relation! | UI Message | 4096 |  |  |
+| 83 (0x53) | 4346 | Successfully changed description! | UI Message | 4096 |  |  |
+| 84 (0x54) | 5397 | Error: Failed to reject application! | Guild/Friends | 4096 |  |  |
+| 85 (0x55) | 5398 | Error: Failed to accept application! | Guild/Friends | 4096 |  |  |
+| 86 (0x56) | 5399 | Error: Failed to delete invitation! | UI Message | 4096 |  |  |
+| 87 (0x57) | 5400 | Error: Failed to accept invitation! | UI Message | 4096 |  |  |
+| 88 (0x58) | 5401 | Error: Failed to reject invitation! | UI Message | 4096 |  |  |
+| 89 (0x59) | 5404 | Error: You cannot apply to a faction if you are blacklisted from it! | UI Message | 4096 |  |  |
+| 90 (0x5A) | 5403 | Error: Failed to create application! | Guild/Friends | 4096 |  |  |
+| 91 (0x5B) | 4347 | Successfully created application! | Guild/Friends | 4096 | 24 | FriendsList_ClearSelection |
+| 92 (0x5C) | 5405 | Error: Failed to delete application! | Guild/Friends | 4096 |  |  |
+| 93 (0x5D) |  |  |  | 4096,0x8000 |  |  |
+| 94 (0x5E) | 5520 | Error: The leader's skills do not allow for any more members to be added to the faction! | Guild/Friends | 4096 |  |  |
+| 95 (0x5F) | 5521 | Error: The faction's perks do not allow for any more world services to be owned! | UI Message | 0x200000 |  |  |
+| 96 (0x60) | 5658 | Error: Your faction's perks do not allow you to capture services of this type! | UI Message | 0x200000 |  |  |
+| 97 (0x61) | 5408 | Error: Failed to create rank! | Guild/Friends | 4096 |  |  |
+| 98 (0x62) | 5409 | Error: Failed to delete rank! | Guild/Friends | 4096 |  |  |
+| 99 (0x63) | 5410 | Error: Failed to update rank! | Guild/Friends | 4096 |  |  |
+| 100 (0x64) | 4348 | Successfully updated rank! | Guild/Friends | 4096 | 24 | FriendsList_ResetNetState |
+| 101 (0x65) | 4349 | Successfully updated faction message! | UI Message | 4096 |  |  |
+| 102 (0x66) | 5411 | Error: Failed to retrieve player details! | UI Message | 0x8000 |  |  |
+| 103 (0x67) | 4350 | Successfully performed action! | UI Message | 0x8000 |  |  |
+| 104 (0x68) | 4351 | Successfully moved rank! | Guild/Friends | 4096 | 24 | FriendsList_ToggleSortOrder |
+| 105 (0x69) | 5412 | Error: Failed to move rank! | Guild/Friends | 4096 |  |  |
+| 106 (0x6A) | 5413 | Error: Failed to create goal! | UI Message | 0x200000 |  |  |
+| 107 (0x6B) | 4359 | Successfully created goal! | UI Message | 0x200000 |  |  |
+| 108 (0x6C) | 4360 | Successfully deleted goal! | UI Message | 0x200000 |  |  |
+| 109 (0x6D) | 5414 | Error: Failed to delete goal! | UI Message | 0x200000 |  |  |
+| 110 (0x6E) | 5416 | Target already has a warrant placed upon them by your faction! | Faction | 8 | 28 | SetFlag6408 |
+| 111 (0x6F) |  |  | UI/System | 8 | 28 | SetFlag6408 |
+| 112 (0x70) | 5415 | Target not found! | UI/System | 8 | 28 | SetFlag6408 |
+| 113 (0x71) | 4361 | Successfully created warrant! | Faction | 8 |  |  |
+| 114 (0x72) | 5417 | Error: Failed to create warrant! | Faction | 8 |  |  |
+| 115 (0x73) | 4362 | Successfully deleted warrant! | Guild/Friends | 8 | 24 | FriendsList_SelectById |
+| 116 (0x74) | 5423 | Error: Failed to delete warrant! | Faction | 8 |  |  |
+| 117 (0x75) | 5432 | Error: Failed to split container! | UI Message |  |  |  |
+| 118 (0x76) |  |  |  |  |  |  |
+| 119 (0x77) |  |  |  |  |  |  |
+| 120 (0x78) |  |  |  |  |  |  |
+| 121 (0x79) |  |  |  |  |  |  |
+| 122 (0x7A) |  |  |  |  |  |  |
+| 123 (0x7B) |  |  |  |  |  |  |
+| 124 (0x7C) |  |  | Faction |  | 29 | FactionUI_OnCommand |
+| 125 (0x7D) | 5436 | Using the item has failed! | UI Message |  |  |  |
+| 126 (0x7E) | 5687 | Error: Opening this box requires a Keycard of the same color! Keycards can be purchased from the marketplace at http://www.faceofmankind.com/marketplace/store, or purchased from other players either through trades or the marketing system. | UI Message |  |  |  |
+| 127 (0x7F) | 5437 | This item can be used by premium accounts only! |  |  |  |  |
+| 128 (0x80) | 5445 | Error: You do not have the necessary skills to use this item! | UI Message |  |  |  |
+| 129 (0x81) | 5440 | Currently there is no free slot available to use this item. You can only use 3 items at a time. |  |  |  |  |
+| 130 (0x82) | 5439 | You have to wait %1!d! seconds before you can use this item! |  |  |  |  |
+| 131 (0x83) | 5438 | You are already using an item of this kind! |  |  |  |  |
+| 132 (0x84) |  |  |  |  |  |  |
+| 133 (0x85) | 5454,5645 | Access Denied! | Error: This object is currently initializing and will be inaccessible for %1!u! second(s). | UI Message | 2048 |  |  |
+| 134 (0x86) | 5589 | Access Denied: Your faction has not given you permission to use this! |  | 2048 |  |  |
+| 135 (0x87) | 33,5455 | Transport | Error: Failed to edit account! | UI Message | 4096 |  |  |
+| 136 (0x88) | 4368 | Successfully edited account! | Guild/Friends | 4096 | 33,24 | FriendsList_AddOrUpdateEntry |
+| 137 (0x89) | 5509 | Error: Failed to change payout factor! | UI Message | 4096 |  |  |
+| 138 (0x8A) |  |  | Guild/Friends | 4096 | 24 | FriendsList_RemoveEntry |
+| 139 (0x8B) | 5458 | Error: Failed to find target! | UI Message | 4096 |  |  |
+| 140 (0x8C) | 5459 | Error: Failed to transfer funds! | UI Message | 4096 |  |  |
+| 141 (0x8D) |  |  | UI/System | 4096 | 33 | UIWidget_OnConfirmSelection |
+| 142 (0x8E) | 5508 | Error: Failed to deposit faction funds! | UI Message | 4096 |  |  |
+| 143 (0x8F) | 4399 | Successfully deposited faction funds! | Guild/Friends | 4096 | 24 | FriendsList_UpdateCounter |
+| 144 (0x90) | 4369 | Successfully changed storage rental units! | UI Message | 32 |  |  |
+| 145 (0x91) | 5462 | Error: Failed to change storage rental units! | UI Message | 32 |  |  |
+| 146 (0x92) | 4370 | The owner of the '%1!s!' world service on this world has changed the relation taxes! | UI/System | 2048 | 32 | SharedMem_ReadDword_this |
+| 147 (0x93) |  |  |  |  |  |  |
+| 148 (0x94) |  |  |  |  |  |  |
+| 149 (0x95) |  |  |  |  |  |  |
+| 150 (0x96) |  |  |  | 0x2000000 | 35 |  |
+| 151 (0x97) |  |  | UI/System |  | 35 | CWindowTerminalChemicalLab_StartProduction |
+| 152 (0x98) |  |  |  |  | 35 |  |
+| 153 (0x99) | 5482 | Error: The mission could not be created! | UI Message | 1024 |  |  |
+| 154 (0x9A) | 5483 | Error: Invalid target! | UI Message |  |  |  |
+| 155 (0x9B) | 5484 | Error: Invalid Mission! | UI Message | 1024 |  |  |
+| 156 (0x9C) | 5485 | Error: Target not found! | UI Message | 1024 |  |  |
+| 157 (0x9D) | 5486 | Error: Target is offline! | UI Message | 1024 |  |  |
+| 158 (0x9E) | 5487 | Error: Target is already in a mission! | UI Message | 1024 |  |  |
+| 159 (0x9F) | 4385 | Successfully invited target to mission! | UI Message | 1024 |  |  |
+| 160 (0xA0) | 4386 | You have denied the invitation. |  | 1024 |  |  |
+| 161 (0xA1) | 4387 | You have accepted the invitation. |  | 1024 |  |  |
+| 162 (0xA2) | 5490 | Error: You cannot invite yourself! | UI Message | 1024 |  |  |
+| 163 (0xA3) | 5492 | Error: You cannot edit this value. You must recreate the mission with different settings! | UI Message | 1024 |  |  |
+| 164 (0xA4) | 5496 | Error: You must be the mission leader to do this! | UI Message | 1024 |  |  |
+| 165 (0xA5) | 5497 | Error: Failed to disband the mission! | UI Message | 1024 |  |  |
+| 166 (0xA6) | 4389 | Your mission has been disbanded! | UI/System | 1024 | 36 | SharedMem_WriteCharStateFlag |
+| 167 (0xA7) | 5498 | Error: You must have at least %1!u! members to start the mission! | Guild/Friends | 1024 |  |  |
+| 168 (0xA8) | 4390 | Your mission has been started! |  | 1024 | 36 |  |
+| 169 (0xA9) | 4391 | Your mission has been completed! | UI/System | 1024 | 36 | SharedMem_WriteCharStateFlag,UICmd_InvokeCommand5 |
+| 170 (0xAA) | 4392 | Successfully removed member! | Guild/Friends | 1024 | 36 |  |
+| 171 (0xAB) | 5499 | Error: Failed to remove member! | Guild/Friends | 1024 |  |  |
+| 172 (0xAC) | 5500 | You have been removed from the mission! | UI/System | 1024 | 36 | SharedMem_WriteCharStateFlag |
+| 173 (0xAD) | 4393 | Successfully joined mission! | UI Message | 1024 | 36 | UICmd_InvokeCommand6,SharedMem_WriteCharStateFlag |
+| 174 (0xAE) | 5501 | Error: You cannot join a mission again after you have been kicked from it! The leader must invite you! | UI Message | 1024 |  |  |
+| 175 (0xAF) | 37,4394 | Buy Items | Successfully added event! | UI Message | 1024 |  |  |
+| 176 (0xB0) | 36,4395 | Faction Production | Successfully filed review! | UI Message | 1024 |  |  |
+| 177 (0xB1) |  |  |  |  |  |  |
+| 178 (0xB2) |  |  |  |  |  |  |
+| 179 (0xB3) | 4398 | The takeover battle for the %1!s! world service of %2!s! has concluded. %3!s! has control of the world service. |  |  |  |  |
+| 180 (0xB4) | 5502 | Error: This goal cannot be created for a world service you own! | UI Message | 0x200000 |  |  |
+| 181 (0xB5) |  |  |  | 0x200000 | 27 |  |
+| 182 (0xB6) | 5503 | Error: Your faction does not have the funds to create this goal! | UI Message | 0x200000 |  |  |
+| 183 (0xB7) | 5504 | Error: Your faction cannot have duplicate occupation goals! | UI Message | 0x200000 |  |  |
+| 184 (0xB8) | 5506 | To create a takeover mission, you must either have a goal on the world service, or a mutual ally with a goal on the world service. |  | 1024 |  |  |
+| 185 (0xB9) | 4402 | Successfully changed payout factor! | UI Message | 4096 |  |  |
+| 186 (0xBA) | 5456 | Error: Failed to delete account! | UI Message | 4096 |  |  |
+| 187 (0xBB) | 5511 | Error: Failed to perform rank payment! | Guild/Friends | 4096 |  |  |
+| 188 (0xBC) | 5512 | Error: You do not have the funds necessary to pay this many members! %1!u! UC is required for %2!u! members! | Guild/Friends | 4096 |  |  |
+| 189 (0xBD) | 5513 | Error: The select rank(s) have no members! | Guild/Friends | 4096 |  |  |
+| 190 (0xBE) | 1876,1877 | This rank payment will cost a total of %1!u! UC, and will pay %2!u! member(s). Are you sure you would like to pay this? | This rank payment will cost a total of %1!u! UC, and will pay %2!u! member(s). Please note that the system account has insufficient funds, and the capital account will be used as well. Are you sure you would like to pay this? | Guild/Friends | 4096 |  |  |
+| 191 (0xBF) | 4403 | Successfully paid members! | Guild/Friends | 4096 |  |  |
+| 192 (0xC0) | 4404 | Successfully updated taxes! | Market | 2 | 38 | CWindowProductionRecycle_CopySkillsFromMarket |
+| 193 (0xC1) | 5407 | Error: You do not have permission to perform this action! | UI Message | 2 |  |  |
+| 194 (0xC2) | 5407 | Error: You do not have permission to perform this action! | UI Message |  |  |  |
+| 195 (0xC3) | 5518 | Error: You do not have room in your inventory! | UI Message |  |  |  |
+| 196 (0xC4) |  |  | UI/System |  |  | SharedMem_WriteString126546 |
+| 197 (0xC5) |  |  |  |  |  |  |
+| 198 (0xC6) | 5524 | Error: Failed to deploy item! | UI Message |  |  |  |
+| 199 (0xC7) | 4406 | Successfully deployed item! | UI Message |  |  |  |
+| 200 (0xC8) | 5454 | Access Denied! |  |  |  |  |
+| 201 (0xC9) | 5595 | Error: You do not have enough inventory space! | UI Message |  |  |  |
+| 202 (0xCA) | 4407 | Successfully picked up item! | UI Message | 8 |  |  |
+| 203 (0xCB) | 4469 | Successfully removed item! | UI Message | 8 | 41 |  |
+| 204 (0xCC) | 41,42,43,68,5454 | Finish | Transfer | Cancel | Edit | Access Denied! |  | 8 |  |  |
+| 205 (0xCD) | 41,42,43,68,79,4408,4409 | Finish | Transfer | Cancel | Edit | Recharge Mining Tool | Successfully changed object! | Healing stopped! | UI Message | 8 |  |  |
+| 206 (0xCE) | 5442,5525 | Healing is not required. | Error: No world service within range! | UI Message |  |  |  |
+| 207 (0xCF) | 4409 | Healing stopped! |  | 8 | 42 |  |
+| 208 (0xD0) | 5530 | Error: Failed to repair item! | UI Message |  |  |  |
+| 209 (0xD1) | 5532,5666,5667,50000 | Error: Failed to recycle item! | Error: Safezones have a maximum of %1!u! UC from raw materials per day! Upgrade to a Premium account to enjoy an increased maximum of %2!u! UC! | Error: Safezones have a maximum of %1!u! UC from raw materials per day! | UI Message | 8 |  |  |
+| 210 (0xD2) | 46,4416 | Exit | Successfully purchased apartment! | UI Message | 0x20000 |  |  |
+| 211 (0xD3) | 5533 | Error: Failed to purchase apartment! | UI Message |  |  |  |
+| 212 (0xD4) | 5650 | Error: You have reached the maximum number of apartments you may purchase! Please delete or transfer an apartment to purchase another! | UI Message |  |  |  |
+| 213 (0xD5) | 5651 | Error: You have reached the maximum number of apartments you may purchase! Please upgrade to a premium account to purchase another! | UI Message |  |  |  |
+| 214 (0xD6) | 5534,5535 | Error: The apartment ID you have entered is invalid! | Error: The apartment entrance code you have entered is incorrect! | UI Message |  |  |  |
+| 215 (0xD7) |  |  | Login | 0x20000 |  | SharedMem_WriteDword_0x77,SharedMem_WriteDword_0x78,LoginUI_ShowMessage |
+| 216 (0xD8) | 5536 | Error: Failed to get apartment information! | UI Message |  |  |  |
+| 217 (0xD9) | 5537 | You do not have access to this information! |  |  |  |  |
+| 218 (0xDA) | 4417 | Successfully applied changes! | Faction | 0x20000 | 48 | CWindowFactionMgmt_CopyEditedToState |
+| 219 (0xDB) | 4418 | The apartment you are in has been deleted! | Login | 0x20000 |  | SharedMem_ReadBool_std,SharedMem_ResetAuctionState,SharedMem_WriteWorldInst_0x1EEC2,SharedMem_ReadDword_this,SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldLoginState_0x1EEC0,LoginUI_ShowMessage |
+| 220 (0xDC) | 5539 | Error: Invalid recipient entered! | UI Message |  |  |  |
+| 221 (0xDD) | 5664 | Error: You must remove bound items from your safe before transferring the apartment! | UI Message |  |  |  |
+| 222 (0xDE) | 48,4419 | Close | Successfully transfered apartment ownership! | UI Message | 0x20000 |  |  |
+| 223 (0xDF) | 5540 | Error: Cannot transfer apartment to yourself! | UI Message |  |  |  |
+| 224 (0xE0) | 5542 | Error: The specified faction does not exist! | UI Message | 0x20000 |  |  |
+| 225 (0xE1) | 5543,30985 | You must have a valid %1!s! in your inventory to use the Vortex Gate! | Vortex Ticket | UI/System | 0x400000 |  | SharedMem_ReadDword_this |
+| 226 (0xE2) | 5544 | Error: Cannot use Vortex Gate, target world is offline! | UI Message | 0x400000 |  |  |
+| 227 (0xE3) | 4421 | Successfully purchased vortex ticket! | Audio | 0x400000 | 49 | Sound_PlayAtPosition |
+| 228 (0xE4) | 5545,5681 | Error: Failed to purchase vortex ticket! | Error: As a prisoner you may only access %1!s!! | UI Message | 0x400000 |  | PlayerStats_GetStatValue |
+| 229 (0xE5) | 5546 | Error: Failed to scan target! | UI Message |  |  |  |
+| 230 (0xE6) | 4422 | Successfully obtained apartment identification! | UI Message |  |  |  |
+| 231 (0xE7) |  |  | Login |  |  | SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldLoginState_0x1EEC0,SharedMem_WriteDword_0x77,SharedMem_WriteDword_0x78,LoginUI_ShowMessage |
+| 232 (0xE8) | 5550 | Error: You have already created the maximum number of bounties! To place another bounty, please delete an existing one! | UI Message |  |  |  |
+| 233 (0xE9) | 5551 | Error: You do not have enough credits to create this bounty! | UI Message |  |  |  |
+| 234 (0xEA) | 5552 | Error: The target you have entered does not exist! | UI Message |  |  |  |
+| 235 (0xEB) | 5553 | Error: Failed to create bounty! | UI Message |  |  |  |
+| 236 (0xEC) | 4425 | Successfully created bounty! | UI Message |  |  |  |
+| 237 (0xED) | 5554 | Error: You cannot place a bounty on yourself! | UI Message |  |  |  |
+| 238 (0xEE) | 5556 | Error: Failed to delete bounty! | UI Message |  |  |  |
+| 239 (0xEF) | 4426 | Successfully deleted bounty! | UI Message |  |  |  |
+| 240 (0xF0) | 5557 | Error: Failed to apply for bounty! | UI Message |  |  |  |
+| 241 (0xF1) | 5559,18030,18031,18032,18033 | Error: You have applied to the maximum number of bounties! | Bounty Collection | Advanced Tracking | Contractual Efficiency | License To Kill | UI Message | 0x8000000 |  |  |
+| 242 (0xF2) | 4427 | Successfully applied for bounty! | UI Message |  |  |  |
+| 243 (0xF3) | 5560 | Error: Failed to approve hunter! | UI Message |  |  |  |
+| 244 (0xF4) | 4428 | Successfully approved hunter! | UI Message |  |  |  |
+| 245 (0xF5) | 5561 | Error: Failed to reject hunter! | UI Message |  |  |  |
+| 246 (0xF6) | 4429 | Successfully rejected hunter! | UI Message |  |  |  |
+| 247 (0xF7) | 5562 | Error: Failed to abandon bounty! | UI Message |  |  |  |
+| 248 (0xF8) | 4430 | Successfully abandoned bounty! | UI Message |  |  |  |
+| 249 (0xF9) | 5563 | Error: Failed to rate hunter! | UI Message |  |  |  |
+| 250 (0xFA) | 51,4431 | Produce | Successfully rated hunter! | UI Message | 0x8000000 |  |  |
+| 251 (0xFB) | 5564 | Error: Failed to arrest target! | UI Message |  |  |  |
+| 252 (0xFC) | 5565 | Error: The arrest target is invalid! | UI Message |  |  |  |
+| 253 (0xFD) | 5566 | Error: The target does not have any penalty points and cannot be arrested! | UI Message |  |  |  |
+| 254 (0xFE) | 5567 | Error: Your faction must own a prison world service to arrest citizens! | UI Message |  |  |  |
+| 255 (0xFF) |  |  |  |  |  |  |
+| 256 (0x100) | 5568 | Error: Your faction's prison is full and cannot hold more prisoners! | UI Message |  |  |  |
+| 257 (0x101) | 5447 | Error: Failed to open terminal! | UI Message | 2048 |  |  |
+| 258 (0x102) | 4433 | You have successfully unloaded your Mineral Rocks and %1!u! PP has been removed! | UI Message | 2048 |  |  |
+| 259 (0x103) | 5570 | Error: An unknown trade error has occured! | UI Message |  |  |  |
+| 260 (0x104) | 5571 | Error: Failed to move items! They do not have enough items in their inventory for this! | UI Message |  |  |  |
+| 261 (0x105) | 5572 | Error: Failed to complete trade! The number of items traded cannot exceed the available inventory space! | UI Message | 0x40000 | 53 |  |
+| 262 (0x106) | 5573 | Error: Failed to move Items! | UI Message |  |  |  |
+| 263 (0x107) | 5574 | Error: You do not have the amount of credits you want to trade! | UI Message | 0x40000 | 53 |  |
+| 264 (0x108) | 5581 | Error: Target is unknown or offline! | UI Message |  |  |  |
+| 265 (0x109) |  |  | Login |  |  | SharedMem_ReadBool_std,LoginField_QueueUpdate,GameStateMgr_EnterPausedState |
+| 266 (0x10A) | 4464 | The player has been kicked from the game! |  |  |  |  |
+| 267 (0x10B) | 4465 | The player has been kicked from the game and banned! |  |  |  |  |
+| 268 (0x10C) | 4436 | Target is currently logged in at: %1!s! |  |  |  |  |
+| 269 (0x10D) |  |  | Login |  |  | SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldInst_0x1EEC2,SharedMem_WriteWorldLoginState_0x1EEC0,LoginUI_ShowMessage |
+| 270 (0x10E) |  |  | Login |  |  | SharedMem_WriteWorldId_0x1EEC1,SharedMem_WriteWorldInst_0x1EEC2,SharedMem_WriteWorldLoginState_0x1EEC0,SharedMem_WriteDword_0x77,SharedMem_WriteDword_0x78,LoginUI_ShowMessage |
+| 271 (0x10F) | 2000 |  |  |  |  |  |
+| 272 (0x110) |  |  |  | 2048 | 55 |  |
+| 273 (0x111) | 5586 | Error: You do not have enough credits! | UI Message |  |  |  |
+| 274 (0x112) | 5588 | Error: This territory object cannot be used as there is no owner! | UI Message |  |  |  |
+| 275 (0x113) | 5587 | Error: The owning faction does not have enough funds to supply this territory object! | UI Message |  |  |  |
+| 276 (0x114) |  |  |  |  |  |  |
+| 277 (0x115) | 4444 | Successfully set transfer target! | UI Message | 2048 | 56 |  |
+| 278 (0x116) | 4445 | %1!s! has rolled two dice and landed on %2!u! and %3!u! |  |  |  |  |
+| 279 (0x117) | 5590 | You must wait %1!u! seconds to roll the dice again. |  |  |  |  |
+| 280 (0x118) | 18009 | Drilling Operations |  |  |  |  |
+| 281 (0x119) | 5663 | Error: You cannot deploy aliens on this world! | UI Message |  |  |  |
+| 282 (0x11A) | 5680 | Error: This world must have a World Market service to deploy objects of this type! | UI Message |  |  |  |
+| 283 (0x11B) | 18009 | Drilling Operations |  |  |  |  |
+| 284 (0x11C) | 5594 | Error: You cannot place any more mining rigs! | UI Message |  |  |  |
+| 285 (0x11D) | 5596 | Error: Enemies cannot be spawned on this world! | UI Message |  |  |  |
+| 286 (0x11E) | 5597 | Error: Player is not a prisoner! | UI Message |  |  |  |
+| 287 (0x11F) | 5598 | Error: You do not have enough credits to do this! | UI Message | 2048 |  |  |
+| 288 (0x120) | 57,4446 | Next | Successully paid the target's bail! | UI Message | 2048 |  |  |
+| 289 (0x121) | 4447 | You are now free to leave the prison! |  |  |  |  |
+| 290 (0x122) | 4488 | You have escaped from prison! |  |  |  |  |
+| 291 (0x123) | 5599 | Error: Prisoners cannot trade! | UI Message |  |  |  |
+| 292 (0x124) | 5617 | Error: Cannot trade players that have blocked you! | UI Message |  |  |  |
+| 293 (0x125) | 58,4448 | Start Search | Successfully freed the target from prison! | UI Message | 2048 |  |  |
+| 294 (0x126) | 4449 | You have escaped from prison! |  |  |  |  |
+| 295 (0x127) | 5601 | Error: You must have a valid target to search! | UI Message |  |  |  |
+| 296 (0x128) | 5682 | Error: Target is offline! | UI Message | 0x2000 |  |  |
+| 297 (0x129) | 5602 | Failed to locate target! | UI Message | 0x2000 | 59 |  |
+| 298 (0x12A) | 5603 | Error: Failed to unlock perk! | UI Message | 4096 |  |  |
+| 299 (0x12B) | 4450 | Successfully unlocked faction perk! | UI Message |  |  |  |
+| 300 (0x12C) | 5634,5635 | Error: Failed to activate perk! | Error: Failed to deactivate perk! | UI Message |  |  |  |
+| 301 (0x12D) | 24,4471,4472 | Successfully activated perk! | Successfully deactivated perk! | UI Message | 4096 |  |  |
+| 302 (0x12E) |  |  | Faction |  |  | FactionPerks_ActivatePerk |
+| 303 (0x12F) |  |  | UI/System |  | 64 | HudNotify_ShowArrestMessage |
+| 304 (0x130) | 5604 | Error: An NPC error has occured! | UI Message |  |  |  |
+| 305 (0x131) | 5605 | Error: Cannot edit published NPCs! | UI Message |  |  |  |
+| 306 (0x132) | 4453 | Successfully created NPC! | UI Message |  | 62 |  |
+| 307 (0x133) | 4454 | Successfully edited NPC! | UI Message |  |  |  |
+| 308 (0x134) | 5606 | Error: Cannot add any more NPCs to the world! | UI Message |  |  |  |
+| 309 (0x135) | 5607 | Error: Cannot create any more objectives! | UI Message |  |  |  |
+| 310 (0x136) | 4455 | Successfully created NPC objective! | UI Message |  | 62 |  |
+| 311 (0x137) | 4456 | Successfully edited NPC objective! | UI Message |  |  |  |
+| 312 (0x138) | 5608 | Error: Cannot modify NPCs that are not on the same world! | UI Message |  |  |  |
+| 313 (0x139) | 5619 | Error: Cannot edit NPCs that are locked to the last editor! | UI Message |  |  |  |
+| 314 (0x13A) | 4457 | Successfully deleted NPC and all related objectives! | UI Message |  |  |  |
+| 315 (0x13B) | 4458 | Successfully deleted objective! | UI Message |  |  |  |
+| 316 (0x13C) | 4459 | Successfully changed NPC status | UI Message |  |  |  |
+| 317 (0x13D) | 62,4460 | Promote | Successfully changed objective status | UI Message |  |  |  |
+| 318 (0x13E) |  |  |  |  | 62 |  |
+| 319 (0x13F) |  |  | UI/System |  | 62 | CWindowArmory_AddLoadout |
+| 320 (0x140) | 5609 | Error: Cannot find objective! | UI Message |  |  |  |
+| 321 (0x141) | 5610 | Error: You have accepted the maximum number of objectives! | UI Message | 0x10000000 |  |  |
+| 322 (0x142) | 5614 | Error: Players of a different faction cannot join missions which reward faction credits! | UI Message | 1024 |  |  |
+| 324 (0x144) | 5618 | Error: Mission is full! | UI Message | 1024 |  |  |
+| 325 (0x145) |  |  | Character |  | 0 | CharacterSelectUI_SetupDisplay |
+| 326 (0x146) | 5624 | Error: Items of this type must be deployed in a capturable territory! | UI Message | 8 |  |  |
+| 327 (0x147) | 5625 | Error: Items of this type can only be deployed in territory owned by your faction! | UI Message | 8 |  |  |
+| 328 (0x148) | 5626 | Error: You must be in a faction and have the correct rank permission to deploy items of this type! | Guild/Friends | 8 |  |  |
+| 329 (0x149) | 5627 | Error: This territory is unowned! | UI Message | 8 |  |  |
+| 330 (0x14A) | 5628 | Error: Items of this type cannot be deployed in territory that is already owned! | UI Message | 8 |  |  |
+| 331 (0x14B) | 5657 | Error: Your faction's perks do not allow you to capture more territory on this world! | UI Message | 8 |  |  |
+| 332 (0x14C) |  |  |  |  |  |  |
+| 333 (0x14D) |  |  |  |  |  |  |
+| 334 (0x14E) | 5629 | Error: This territory is not generating enough electricity to power this object and it is offline! | UI Message | 2048 |  |  |
+| 335 (0x14F) | 4470 | Successfully updated information! | UI Message | 2048 |  |  |
+| 336 (0x150) | 5631 | Error: You do not have permission to do this! | UI Message | 2048 |  |  |
+| 337 (0x151) | 5637 | Error: Your faction does not own enough territory on this world to deploy more objects! | UI Message | 2048 |  |  |
+| 338 (0x152) | 5647 | Error: Cannot deploy objects in a territory that has been locked down! | UI Message | 2048 |  |  |
+| 339 (0x153) |  |  | UI/System |  | 72 | UIWidget_SetSelectionState,GameStateMgr_EnterPausedState |
+| 340 (0x154) | 5640 | Error: Cannot create faction on an offline player! | UI Message |  |  |  |
+| 341 (0x155) | 5641 | Your access to help chat has been revoked for %1!u! hour(s)! | UI Message |  |  |  |
+| 342 (0x156) | 4474 | Your access to help-chat has been restored! | UI Message |  |  |  |
+| 343 (0x157) | 4475 | Successfully set player's help mute status! | UI Message |  |  |  |
+| 344 (0x158) | 5644 | Error: You must wait %1!u! second(s) before sending another message in help chat! | UI Message |  |  |  |
+| 345 (0x159) | 4476 | Successfully locked object down! | UI Message | 2048 |  |  |
+| 346 (0x15A) | 5646 | Error: Failed to lock object down! | UI Message | 2048 |  |  |
+| 347 (0x15B) | 5648 | Error: This territory is currently locked down and cannot be accessed until %1!s!! | UI Message | 2048 |  |  |
+| 348 (0x15C) | 5649 | Error: Your faction does not have enough credits to lock this territory down! | UI Message | 2048 |  |  |
+| 349 (0x15D) |  |  | UI/System |  |  | SharedMem_WriteString11224 |
+| 350 (0x15E) | 5654 | Error: Failed to register murder! | UI Message | 0x8000000 |  |  |
+| 351 (0x15F) | 4477 | %1!s! has been given %2!u! PP for this murder! |  | 0x8000000 |  |  |
+| 352 (0x160) | 4478 | %1!s! has called for backup at %2!s! - %3!s!! |  |  |  |  |
+| 353 (0x161) |  |  | UI/System |  | 77 | UIWidget_SetLabelText |
+| 354 (0x162) |  |  | UI/System |  | 77 | UIWidget_ResetLabel |
+| 355 (0x163) |  |  | UI/System |  | 64 | HudNotify_ShowPPChangeMessage |
+| 356 (0x164) | 5669 | Error: Failed to create department! | UI Message | 4096 |  |  |
+| 357 (0x165) | 5670 | Error: Failed to delete department! | UI Message | 4096 |  |  |
+| 358 (0x166) | 4482 | You have successfully added a player to the department! | UI Message | 4096 |  |  |
+| 359 (0x167) | 5671 | Error: Failed to add member to department! | Guild/Friends | 4096 |  |  |
+| 360 (0x168) | 4483 | You have successfully removed a player from the department! | UI Message | 4096 |  |  |
+| 361 (0x169) | 5672 | Error: Failed to remove member from department! | Guild/Friends | 4096 |  |  |
+| 362 (0x16A) | 4484 | You have successfully set a new department leader! | UI Message | 4096 |  |  |
+| 363 (0x16B) | 5673 | Error: Failed to set member to department leader! | Guild/Friends | 4096 |  |  |
+| 364 (0x16C) | 5674 | Error: Failed to find player! | UI Message | 4096 |  |  |
+| 365 (0x16D) | 5675 | Error: Players of different factions cannot be added to departments! | UI Message | 4096 |  |  |
+| 366 (0x16E) | 5678 | Error: This player is already in a department! | UI Message | 4096 |  |  |
+| 367 (0x16F) | 4485 | Your department has been disbanded! |  |  |  |  |
+| 368 (0x170) | 4486,4487 | You have been added to a department! | You have been removed from your department! |  |  |  |  |
+| 369 (0x171) | 5677 | Error: An error has occurred | UI Message |  |  |  |
+| 370 (0x172) |  |  |  |  |  |  |
+| 371 (0x173) | 5683 | Error: Turret is initializing! It will become active in %1!u! seconds! | UI Message |  |  |  |
+| 372 (0x174) | 5684 | Error: This location is too close to another turret of the same type! | UI Message |  |  |  |
+| 373 (0x175) | 5685 | Error: Turret is offline due to insufficient electricity! | UI Message |  |  |  |
+| 374 (0x176) | 5686 | Error: You cannot place more than 3 personal turrets per world! | UI Message |  |  |  |
+| 375 (0x177) |  |  | UI/System |  |  | SkillList_ResetState |
+
+### Code (Packet_ID_NOTIFY_107 subId helpers)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x101A0D70 | 0x001A0D70 | Action_SendPickupPacket | Sends pickup packet; used by subId 0x10 | decomp (user) | med |
+| 0x1018C480 | 0x0018C480 | EncVar_WriteStatGroup5 | Writes StatGroup 5 value; used by subId 0x12 | decomp (user) | low |
+| 0x1018AD10 | 0x0018AD10 | SharedMem_WriteString11224 | Writes SharedMem string; used by subId 0x15D | decomp (user) | low |
+| 0x1018AD30 | 0x0018AD30 | SharedMem_WriteString126546 | Writes SharedMem string; used by subId 0x40 | decomp (user) | low |
+| 0x100EF500 | 0x000EF500 | UIWidget_SetSelectionState | Updates selection state (window id 72); subId 0x153 | decomp (user) | low |
+| 0x100EFBC0 | 0x000EFBC0 | UIWidget_InvokeVirtual5 | Invokes widget virtual #5 (window id 17); subId 0x19 | decomp (user) | low |
+| 0x100F0640 | 0x000F0640 | UIWidget_SetLabelText | Sets label text (window id 77); subId 0x161 | decomp (user) | low |
+| 0x100F0A90 | 0x000F0A90 | UIWidget_ResetLabel | Resets label (window id 77); subId 0x162 | decomp (user) | low |
+| 0x100D5B50 | 0x000D5B50 | CharacterUI_InvokeCommand5 | Invokes character UI cmd #5 (window id 24); subId 0x3F/0x40 | decomp (user) | low |
+| 0x100D5510 | 0x000D5510 | UI_ClearTwoTextFields | Clears two UI text fields; subId 0x46 | decomp (user) | low |
+| 0x100DDB90 | 0x000DDB90 | CharacterUI_SetupPaperdoll | Refreshes character paperdoll; subId 0x4C | decomp (user) | low |
+| 0x100E1430 | 0x000E1430 | FriendsList_HandleSelection | Friends UI selection handler; subId 0x42 | decomp (user) | low |
+| 0x100E04F0 | 0x000E04F0 | FriendsList_ClearSelection | Clears friends selection; subId 0x5B | decomp (user) | low |
+| 0x100E1410 | 0x000E1410 | FriendsList_ResetNetState | Resets friends net state; subId 0x64 | decomp (user) | low |
+| 0x100E0080 | 0x000E0080 | FriendsList_ToggleSortOrder | Toggles friends sort order; subId 0x68 | decomp (user) | low |
+| 0x100E0570 | 0x000E0570 | FriendsList_SelectById | Selects friend by id; subId 0x73 | decomp (user) | low |
+| 0x100D60B0 | 0x000D60B0 | SharedMem_WritePlayerFile | Writes playerfile blob to SharedMem; subId 0x40 | decomp (user) | low |
+| 0x100ACD80 | 0x000ACD80 | InventoryMgr_InvokeCommand5 | Invokes inventory mgr cmd #5 (window id 18); subId 0x1D | decomp (user) | low |
+| 0x10132E50 | 0x00132E50 | HudNotify_ShowPPChangeMessage | Shows PP change HUD message (window id 64); subId 0x163 | decomp (user) | med |
+| 0x1005A570 | 0x0005A570 | GameStateMgr_EnterPausedState | Enter paused state (window id 72); subId 0x153 | decomp (user) | low |
+| 0x100357B0 | 0x000357B0 | Player_HasFaction | Checks player faction; subId 0x6 | decomp (user) | low |
+| 0x101C21B0 | 0x001C21B0 | Player_CheckSpawnState | Checks spawn state; subId 0x6 | decomp (user) | low |
+| 0x1000C580 | 0x0000C580 | PlayerData_ClearEquipment | Clears equipment block; subId 0x40 | decomp (user) | low |
+| 0x100C0880 | 0x000C0880 | SharedMem_WriteFlag_0x94 | Clears flag 0x94; subId 0x4 | decomp (user) | low |
+| 0x100C1470 | 0x000C1470 | WriteLoginDataToFile | Writes login data to .fml file; subId 0xA | decomp (user) | low |
+| 0x10169130 | 0x00169130 | Data_SerializeHelper | Serializes window data (window id 19); subId 0x1F/0x24 | decomp (user) | low |
+| 0x1016B5F0 | 0x0016B5F0 | MarketUI_RefreshInventory | Refreshes market inventory UI (window id 19); subId 0x37 | decomp (user) | low |
+| 0x10150540 | 0x00150540 | CWindowTerminalMarket_SendSearchRequest | Sends terminal market search; subId 0x3C | decomp (user) | low |
+| 0x10173320 | 0x00173320 | Market_BuildSearchPacket | Builds market search packet; subId 0x3C | decomp (user) | low |
+| 0x10121760 | 0x00121760 | SetFlag6408 | Sets flag at offset 0x6408; subId 0x6E/0x6F/0x70 | decomp (user) | low |
+| 0x101413E0 | 0x001413E0 | FactionUI_OnCommand | Faction UI command dispatch (window id 29); subId 0x7C | decomp (user) | low |
+
 ### Data (login packet globals)
 | VA | RVA | Symbol | Purpose | Evidence | Conf |
 |---|---|---|---|---|---|
-| 0x102BFDA8 | 0x002BFDA8 | vtbl_Packet_Id107 | Vtable for Packet_Id107_* funcs | vtable xref | low |
-| 0x102BFD98 | 0x002BFD98 | vtbl_Packet_Unknown0 | Prior vtable used during Packet_Id107_Init | decomp (user) | low |
+| 0x102BFDA8 | 0x002BFDA8 | vtbl_Packet_ID_NOTIFY_107 | Vtable for Packet_ID_NOTIFY_107_* funcs | vtable xref | low |
+| 0x102BFD98 | 0x002BFD98 | vtbl_Packet_Unknown0 | Prior vtable used during Packet_ID_NOTIFY_107_Init | decomp (user) | low |
 | 0x1035AA4C | 0x0035AA4C | g_LTClient | LTClient interface used for packet serialization/send; observed vtbl+0x28=SendPacket, vtbl+0x18=ConnectToWorld(SystemAddress*), vtbl+0x08=IsConnected? | xrefs | low |
 
 ### Data (world tables)
@@ -716,7 +1559,7 @@ Helper:
 |---|---|---|---|---|---|
 | 0x10190D70 | 0x00190D70 | CNetworkMgrClient_HandlePacket_ID_MOVE_ITEMS | Handles move-items packet; deep inventory mutation | string + decomp | high |
 | 0x1018F110 | 0x0018F110 | HandlePacket_ID_USE_ITEM | Use-item packet handling (ID -92) | dispatch + decomp | high |
-| 0x10199A40 | 0x00199A40 | ClientShell_OnMessage_DispatchPacketId | CShell packet-id switch (signed char); handles login IDs 0x6D/0x6F/0x70/0x73 plus inventory/world packets | decomp | high |
+| 0x10199A40 | 0x00199A40 | ClientShell_OnMessage_DispatchPacketId | CShell packet-id switch (signed char); dispatches 0x6B -> Packet_ID_NOTIFY_107_DispatchSubId; handles login IDs 0x6D/0x6F/0x70/0x73 plus inventory/world packets | decomp | high |
 | 0x1018E1F0 | 0x0018E1F0 | HandlePacket_ID_LOGIN_REQUEST_RETURN | Login request-return handler (packet ID 0x6D) | dispatch + decomp | high |
 | 0x1018DCE0 | 0x0018DCE0 | Packet_ID_LOGIN_REQUEST_RETURN_Read | Login response parse (u8 status + session_str via LTClient) | disasm | high |
 
@@ -767,7 +1610,7 @@ Helper:
 | 0x101BFF60 | 0x001BFF60 | SharedMem_ReadWorldInst_0x1EEC2 | Reads world instance (SharedMem 0x1EEC2) | disasm | low |
 | 0x101BFF70 | 0x001BFF70 | SharedMem_ReadWorldId_0x1EEC1 | Reads worldId (SharedMem 0x1EEC1) | disasm | low |
 | 0x1008C670 | 0x0008C670 | WorldSelect_ApplyApartmentInfo | Writes SharedMem[0x77]/[0x78] from selection struct (dword + u8) and updates timer | decomp | med |
-| 0x101A3550 | 0x001A3550 | Packet_Id107_DispatchSubId | Packet_Id107 (ID 0x6B) sub-id switch; subId 44 inventory UI refresh; subId 231/270 force worldId=4 (apartments) + set SharedMem[0x77]/[0x78], subId 269 sets worldId from field | decomp + disasm | high |
+| 0x101A3550 | 0x001A3550 | Packet_ID_NOTIFY_107_DispatchSubId | Packet_ID_NOTIFY_107 (ID 0x6B) sub-id switch; subId 44 inventory UI refresh; subId 231/270 force worldId=4 (apartments) + set SharedMem[0x77]/[0x78], subId 269 sets worldId from field | decomp + disasm | high |
 | 0x10089460 | 0x00089460 | LoginUI_SetMessageText | Sets login UI message text by string id + color; throttled by time | decomp | med |
 | 0x1008BB60 | 0x0008BB60 | UiWidget_GetSlot | Returns widget pointer from UI array slot (0..3) | decomp | low |
 | 0x101BFE00 | 0x001BFE00 | Packet_ID_WORLD_LOGIN_Ctor | Packet ID = 0x72 (WORLD_LOGIN) | disasm | high |
@@ -2861,7 +3704,8 @@ Key SharedMem indices used by LOGIN_RETURN and world login:
 |---|---|---|---|---|---|
 | 0x10147CC6 | (abs) | g_ItemVariantTable? | Packed 0x12?byte record table used by ItemVariant_FindMatchingRecord | disasm | low |
 
-### Code (login request / Packet_Id107 build)
+### Code (login request / Packet_ID_NOTIFY_107 build)
+Note: renamed from Packet_Id107; IDA names may still use the old prefix.
 | VA | RVA | Symbol | Purpose | Evidence | Conf |
 |---|---|---|---|---|---|
 | 0x101C1072 | 0x001C1072 | Login_OnSubmit | Login UI submit handler; reads user/pass fields and queues updates | decomp (user) | high |
@@ -2869,30 +3713,81 @@ Key SharedMem indices used by LOGIN_RETURN and world login:
 | 0x10108F70 | 0x00108F70 | LoginField_QueueUpdate | Stores field ids/values into login window object + triggers apply/send | decomp (user) | med |
 | 0x101055C0 | 0x001055C0 | LoginField_ApplyString | Resolves string via engine interface; sets UI text + flags | decomp (user) | med |
 | 0x10077540 | 0x00077540 | UiText_SetValueIfChanged | Copies new string, triggers validation/callbacks | decomp (user) | low |
-| 0x101C04B0 | 0x001C04B0 | Login_SendRequest_Throttled | Builds Packet_Id107 and calls LTClient_SendPacket_BuildIfNeeded | decomp (user) | med |
-| 0x1000C7E0 | 0x0000C7E0 | Packet_Id107_Init | Initializes packet object; sets msg id byte = 107 | decomp (user) | med |
+| 0x101C04B0 | 0x001C04B0 | Login_SendRequest_Throttled | Builds Packet_ID_NOTIFY_107 and calls LTClient_SendPacket_BuildIfNeeded | decomp (user) | med |
+| 0x1000C7E0 | 0x0000C7E0 | Packet_ID_NOTIFY_107_Init | Initializes packet object; sets msg id byte = 107 | decomp (user) | med |
 | 0x1000C770 | 0x0000C770 | Packet_WriteHeader | Initializes bitstream; writes optional header byte 0x19 + 64-bit token; writes msg id byte | decomp (user) | med |
-| 0x1000D9D0 | 0x0000D9D0 | Packet_Id107_Serialize | Builds bitstream; writes flags + optional ints + 2x2048-bit blocks | decomp (user) | med |
-| 0x1000D8B0 | 0x0000D8B0 | Packet_Id107_Read | Reads bitstream; mirrors serialize + 2x2048-bit blocks | decomp (user) | med |
+| 0x1000D9D0 | 0x0000D9D0 | Packet_ID_NOTIFY_107_Serialize | Builds bitstream; writes flags + optional ints + 2x2048-bit blocks | decomp (user) | med |
+| 0x1000D8B0 | 0x0000D8B0 | Packet_ID_NOTIFY_107_Read | Reads bitstream; mirrors serialize + 2x2048-bit blocks | decomp (user) | med |
 | 0x1000D650 | 0x0000D650 | Playerfile_BlockC0_WriteEntry | Writes one entry in Playerfile blockC0 (bitflag + u16c + 5x u8c + bitfields) | decomp (user) | low |
 | 0x1000CBF0 | 0x0000CBF0 | BitStream_WriteU16C | Writes u16 compressed to bitstream | inferred from usage | low |
 | 0x1000C870 | 0x0000C870 | BitStream_Write2048 | Wrapper: g_LTClient vtbl+0x34 (write 2048 bits) | decomp (user) | low |
 | 0x1000C8A5 | 0x0000C8A5 | BitStream_Read2048 | Wrapper: g_LTClient vtbl+0x38 (read 2048 bits) | decomp (user) | low |
-| 0x1000CB60 | 0x0000CB60 | Packet_Id107_Vtbl0 | Vtable slot +0x00 (unknown role) | vtable xref | low |
+| 0x1000CB60 | 0x0000CB60 | Packet_ID_NOTIFY_107_Vtbl0 | Vtable slot +0x00 (unknown role) | vtable xref | low |
 | 0x100065D9 | 0x000065D9 | Registry_SetUsernameValue | Writes registry value "username" (persistence) | decomp (user) | low |
 | 0x1008A0C0 | 0x0008A0C0 | LoginToken_Process | Reads LoginToken + passes to engine (pre-login flow) | decomp (user) | low |
+| 0x1008F1A0 | 0x0008F1A0 | CharacterSelectUI_SetupDisplay | Sets up character select display (window id 0) using optC + strA/strB; called by Packet_ID_NOTIFY_107 subId=325 | decomp (user) | med |
 | 0x102A64A0 | 0x002A64A0 | Ensure_BitstreamTables_Init | Wrapper; calls Init_BitstreamTables once | xrefs | low |
 | 0x10272AD0 | 0x00272AD0 | Init_BitstreamTables | Initializes large bit/lookup tables (0x102FE000+) | disasm (user) | low |
 
-#### Packet_Id107 bitstream construction (observed)
+#### Packet_ID_NOTIFY_107 bitstream construction (observed)
 
-- Packet_Id107_Serialize writes a series of presence bits for 4 optional fields: +1076, +1080, +1084, +1088; if present it writes the value (u32 for last two; compressed for first two).
+- Packet_ID_NOTIFY_107_Serialize writes a series of presence bits for 4 optional fields: +1076, +1080, +1084, +1088; if present it writes the value (u32 for last two; compressed for first two).
 - Two fixed 2048-bit blocks are appended from packet offsets +1216 and +1344 via g_LTClient vtbl+0x34 (size=2048 bits).
 - If word at +1072 == 325, an extra block is emitted via sub_1000D800(this+1092, this+12).
-- Packet_Id107_Read mirrors the serialize path: reads u16c into +1072, then 4 presence bits + fields, then reads two 2048-bit blocks via g_LTClient vtbl+0x38.
-- If +1072 == 325, Packet_Id107_Read calls Playerfile_read_blockC0(this+1092, this+12).
-- Packet_Id107_Read layout: +1072=u16 subId, +1076=u32 optA (Read_u32c_alt), +1080=u32 optB (Read_u32c_alt), +1084=u32 optC (Read_u32c), +1088=u32 optD (Read_u32c), +1216/+1344=two LTClient strings (2048 bytes each).
-- Packet_Id107_DispatchSubId: subId 44 -> inventory/production UI refresh (slot/tooltips); subId 231/270 -> worldId=4 (apartments) + SharedMem[0x77]=optC + SharedMem[0x78]=optB + set 0x1EEC0=1; subId 269 -> if optA != 0 then worldId=optA + set 0x1EEC0=1 (non-apartment world selection).
+- Packet_ID_NOTIFY_107_Read mirrors the serialize path: reads u16c into +1072, then 4 presence bits + fields, then reads two 2048-bit blocks via g_LTClient vtbl+0x38.
+- If +1072 == 325, Packet_ID_NOTIFY_107_Read calls Playerfile_read_blockC0(this+1092, this+12).
+- Packet_ID_NOTIFY_107_Read layout: +1072=u16 subId, +1076=u32 optA (Read_u32c_alt), +1080=u32 optB (Read_u32c_alt), +1084=u32 optC (Read_u32c), +1088=u32 optD (Read_u32c), +1216/+1344=two LTClient strings (2048 bytes each).
+- Packet_ID_NOTIFY_107_DispatchSubId (selected):
+- subId 1: Network_OnConnectionLost(msgId 5585).
+- subId 2: Player_OnDeath.
+- subId 3: ChatNotify (string 5316).
+- subId 4: ChatNotify "Cloning complete." + SharedMem_WriteFlag_0x94(0).
+- subId 5: ChatNotify (string 5340).
+- subId 6: Player_HasFaction -> Player_CheckSpawnState + ChatNotify (string 4321).
+- subId 7: ChatNotify (string 5336) + g_LTClient vtbl+0x4C(0x1000000).
+- subId 8: ChatNotify (string 1850).
+- subId 9: ChatNotify (string 5341/5342/5343/5344 by optA).
+- subId 0xA: ChatNotify (string 1846) + WriteLoginDataToFile("Mails\\<user>\\Outbox\\%u.fml").
+- subId 0xB/0xC/0xD: ChatNotify (string 1847/1848/1899) + g_LTClient vtbl+0x4C(0x4000).
+- subId 0xE: g_LTClient vtbl+0x4C(0x4000000).
+- subId 0xF: ChatNotify (string 1849) + g_LTClient vtbl+0x4C(1) + Sound_PlayAtPosition(60).
+- subId 0x10: Action_SendPickupPacket(optC).
+- subId 0x12: EncVar_WriteStatGroup5(optA byte2).
+- subId 0x13/0x14/0x15/0x16/0x18/0x1A/0x1C: ChatNotify (string 5347/5515/5514/5348/5349/5615/5616).
+- subId 0x17/0x19: ChatNotify (string 4324/4323) + UIWidget_InvokeVirtual5(window id 17).
+- subId 0x1B/0x1D: ChatNotify (string 4461/4462) + InventoryMgr_InvokeCommand5(window id 18).
+- subId 0x1E: ChatNotify (string 5355).
+- subId 0x1F: ChatNotify (string 4326 w/arg 30 or 4463) + g_LTClient vtbl+0x4C(64) + Data_SerializeHelper(window id 19).
+- subId 0x24: ChatNotify (string 4328) + g_LTClient vtbl+0x4C(64) + Data_SerializeHelper(window id 19).
+- subId 0x2C: ChatNotify (string 5367) + g_LTClient vtbl+0x4C(16) + HandlePacket_ID_6B_SubId44_InventoryUiRefresh(window id 21).
+- subId 0x37: ChatNotify (string 4330) + g_LTClient vtbl+0x4C(2) + MarketUI_RefreshInventory(window id 19); if window id 23 && flag at +6241 -> vtbl+4(4).
+- subId 0x3C: ChatNotify (string 4331) + g_LTClient vtbl+0x4C(2); optA==1 -> CWindowTerminalMarket_SendSearchRequest(window id 22); optB==2 -> Market_BuildSearchPacket(window id 70).
+- subId 0x3F: g_LTClient vtbl+0x4C(4096) + CharacterUI_InvokeCommand5(window id 24) + ChatNotify (string 4338).
+- subId 0x40: g_LTClient vtbl+0x4C(4096) + CharacterUI_InvokeCommand5(window id 24) + clear SharedMem strings + PlayerData_ClearEquipment + SharedMem_WritePlayerFile + set LTClient(2) flags + ChatNotify (string 4339).
+- subId 0x42: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4340) + FriendsList_HandleSelection(window id 24, optC).
+- subId 0x46: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4341) + UI_ClearTwoTextFields (window id 24).
+- subId 0x4C: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4343) + PlayerData_ClearEquipment + CharacterUI_SetupPaperdoll(window id 24; copies window id 25 data).
+- subId 0x52: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4345) + window id 24 vtbl+4(5).
+- subId 0x53: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4346).
+- subId 0x54/0x55/0x56/0x57/0x58/0x59/0x5A: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 5397/5398/5399/5400/5401/5404/5403).
+- subId 0x5B: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4347) + FriendsList_ClearSelection(window id 24).
+- subId 0x64: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4348) + FriendsList_ResetNetState(window id 24).
+- subId 0x66: ChatNotify (string 5411) + g_LTClient vtbl+0x4C(0x8000).
+- subId 0x68: g_LTClient vtbl+0x4C(4096) + ChatNotify (string 4351) + FriendsList_ToggleSortOrder(window id 24, optC, optA==0).
+- subId 0x6E: ChatNotify (string 5416) + SetFlag6408(window id 28, 0) + g_LTClient vtbl+0x4C(8).
+- subId 0x6F: g_LTClient vtbl+0x4C(8) + SetFlag6408(window id 28, 1).
+- subId 0x70: g_LTClient vtbl+0x4C(8) + ChatNotify (string 5415) + SetFlag6408(window id 28, 0).
+- subId 0x73: g_LTClient vtbl+0x4C(8) + ChatNotify (string 4362) + FriendsList_SelectById(window id 24, optC).
+- subId 0x7C: FactionUI_OnCommand(window id 29, optC).
+- subId 44: inventory/production UI refresh (slot/tooltips).
+- subId 231/270: worldId=4 (apartments) + SharedMem[0x77]=optC + SharedMem[0x78]=optB + set 0x1EEC0=1.
+- subId 269: if optA != 0 then worldId=optA + set 0x1EEC0=1 (non-apartment world selection).
+- subId 0x145 (325): CharacterSelectUI_SetupDisplay(window id 0, optC + strA/strB).
+- subId 0x14C/0x14D: localized ChatNotify (string 4467/4468, arg from string 14000+optC, float optD).
+- subId 0x153: UIWidget_SetSelectionState(window id 72) + GameStateMgr_EnterPausedState(72).
+- subId 0x15D: SharedMem_WriteString11224(strA).
+- subId 0x161/0x162: UIWidget_SetLabelText / UIWidget_ResetLabel (window id 77).
+- subId 0x163: HudNotify_ShowPPChangeMessage(window id 64, optC + optA byte2).
 - World selection can also be triggered by packet ID 0x7B (HandlePacket_ID_WORLD_SELECT_7B @ 0x10199270), which sets SharedMem[0x1EEC1/0x1EEC2] and 0x1EEC0=1.
 - Packet_WriteHeader is called before serialize: it resets/initializes the bitstream, optionally writes header byte 0x19 plus a 64-bit token (Packet_GetHeaderTokenU64 via BitStream_WriteU64) when *(this+8)==0x19, then writes msg id byte from *(this+1064).
 - Playerfile_BlockC0_WriteEntry layout (called 10x by sub_1000D800): if *(this+4)==0 or *(this+5)==0 => write bit0. Else write bit1, then u16c, then u8c for bytes +2/+3/+8/+9/+10, plus raw bitfields from +4 (7 bits), +5 (7 bits), +6 (9 bits).
@@ -2900,8 +3795,8 @@ Key SharedMem indices used by LOGIN_RETURN and world login:
 ### Data (login packet globals)
 | VA | RVA | Symbol | Purpose | Evidence | Conf |
 |---|---|---|---|---|---|
-| 0x102BFDA8 | 0x002BFDA8 | vtbl_Packet_Id107 | Vtable for Packet_Id107_* funcs | vtable xref | low |
-| 0x102BFD98 | 0x002BFD98 | vtbl_Packet_Unknown0 | Prior vtable used during Packet_Id107_Init | decomp (user) | low |
+| 0x102BFDA8 | 0x002BFDA8 | vtbl_Packet_ID_NOTIFY_107 | Vtable for Packet_ID_NOTIFY_107_* funcs | vtable xref | low |
+| 0x102BFD98 | 0x002BFD98 | vtbl_Packet_Unknown0 | Prior vtable used during Packet_ID_NOTIFY_107_Init | decomp (user) | low |
 | 0x1035AA4C | 0x0035AA4C | g_LTClient | LTClient interface used for packet serialization/send; observed vtbl+0x28=SendPacket, vtbl+0x18=ConnectToWorld(SystemAddress*), vtbl+0x08=IsConnected? | xrefs | low |
 
 ### Data (world tables)
@@ -2921,7 +3816,7 @@ Key SharedMem indices used by LOGIN_RETURN and world login:
 |---|---|---|---|---|---|
 | 0x10190D70 | 0x00190D70 | CNetworkMgrClient_HandlePacket_ID_MOVE_ITEMS | Handles move-items packet; deep inventory mutation | string + decomp | high |
 | 0x1018F110 | 0x0018F110 | HandlePacket_ID_USE_ITEM | Use-item packet handling (ID -92) | dispatch + decomp | high |
-| 0x10199A40 | 0x00199A40 | ClientShell_OnMessage_DispatchPacketId | CShell packet-id switch (signed char); handles login IDs 0x6D/0x6F/0x70/0x73 plus inventory/world packets | decomp | high |
+| 0x10199A40 | 0x00199A40 | ClientShell_OnMessage_DispatchPacketId | CShell packet-id switch (signed char); dispatches 0x6B -> Packet_ID_NOTIFY_107_DispatchSubId; handles login IDs 0x6D/0x6F/0x70/0x73 plus inventory/world packets | decomp | high |
 | 0x1018E1F0 | 0x0018E1F0 | HandlePacket_ID_LOGIN_REQUEST_RETURN | Login request-return handler (packet ID 0x6D) | dispatch + decomp | high |
 | 0x1018DCE0 | 0x0018DCE0 | Packet_ID_LOGIN_REQUEST_RETURN_Read | Login response parse (u8 status + session_str via LTClient) | disasm | high |
 
@@ -2972,7 +3867,7 @@ Key SharedMem indices used by LOGIN_RETURN and world login:
 | 0x101BFF60 | 0x001BFF60 | SharedMem_ReadWorldInst_0x1EEC2 | Reads world instance (SharedMem 0x1EEC2) | disasm | low |
 | 0x101BFF70 | 0x001BFF70 | SharedMem_ReadWorldId_0x1EEC1 | Reads worldId (SharedMem 0x1EEC1) | disasm | low |
 | 0x1008C670 | 0x0008C670 | WorldSelect_ApplyApartmentInfo | Writes SharedMem[0x77]/[0x78] from selection struct (dword + u8) and updates timer | decomp | med |
-| 0x101A3550 | 0x001A3550 | Packet_Id107_DispatchSubId | Packet_Id107 (ID 0x6B) sub-id switch; subId 44 inventory UI refresh; subId 231/270 force worldId=4 (apartments) + set SharedMem[0x77]/[0x78], subId 269 sets worldId from field | decomp + disasm | high |
+| 0x101A3550 | 0x001A3550 | Packet_ID_NOTIFY_107_DispatchSubId | Packet_ID_NOTIFY_107 (ID 0x6B) sub-id switch; subId 44 inventory UI refresh; subId 231/270 force worldId=4 (apartments) + set SharedMem[0x77]/[0x78], subId 269 sets worldId from field | decomp + disasm | high |
 | 0x10089460 | 0x00089460 | LoginUI_SetMessageText | Sets login UI message text by string id + color; throttled by time | decomp | med |
 | 0x1008BB60 | 0x0008BB60 | UiWidget_GetSlot | Returns widget pointer from UI array slot (0..3) | decomp | low |
 | 0x101BFE00 | 0x001BFE00 | Packet_ID_WORLD_LOGIN_Ctor | Packet ID = 0x72 (WORLD_LOGIN) | disasm | high |

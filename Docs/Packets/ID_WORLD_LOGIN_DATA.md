@@ -83,7 +83,7 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
   - +0x434 u32
   - +0x438 u8
 - WorldLoginSkillEntry48 layout (WorldLogin_ReadSkillEntry; within each 48B slot).
-  NOTE: Not the same as Packet_ID_SKILLS ItemStatEntry (20B) in CShell_Gameplay_Packets.md.
+  NOTE: Not the same as Packet_ID_SKILLS ItemStatEntry (20B) in AddressMap_CShell_dll.md.
   Defaults from WorldLogin_SkillTable{12,6,3}_Init.
   - +0x00 u16c abilityItemId (used by Handle_ID_WORLD_LOGIN to grant ability/accessory)
   - +0x02 u16c (default 0; no consumers found)

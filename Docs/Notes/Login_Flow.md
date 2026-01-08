@@ -235,8 +235,8 @@ RakNet peer list is empty. Reliable frames from unknown peers are rejected befor
 - CShell.dll:
   - HandlePacket_ID_WORLD_SELECT_7B @ 0x10199270 (type=4 sets worldId/worldInst; sets SharedMem[0x1EEC0]=1)
   - Packet_ID_7B_Read @ 0x10106590
-- CShell.dll (alternate path via Packet_Id107, unconfirmed):
-  - Packet_Id107_DispatchSubId @ 0x101A3550
+- CShell.dll (alternate path via Packet_ID_NOTIFY_107, unconfirmed):
+  - Packet_ID_NOTIFY_107_DispatchSubId @ 0x101A3550
     - subId 231/270: worldId=4 (apartments) + SharedMem[0x77]/[0x78], set 0x1EEC0=1
     - subId 269: worldId=optA (non-apartment), set 0x1EEC0=1
 
