@@ -70,6 +70,17 @@ int __fastcall HookRakDecryptEntry(void* Self, void* Edx, uint8_t* Buffer, int L
     return Result;
 }
 
+static void* IsDeadConnectionTrampoline = nullptr;
+typedef char(__thiscall* FIsDeadConnectionFn)(void* Self);
+static FIsDeadConnectionFn OriginalIsDeadConnection = nullptr;
+
+char __fastcall HookIsDeadConnection(void* Self, void* Edx)
+{
+    (void)Edx;
+    (void)Self;
+    return 0;
+}
+
 void InstallRakNetDetours()
 {
     if (!GConfig.bRakNetHooks)
@@ -90,6 +101,18 @@ void InstallRakNetDetours()
         {
             LOG("RakNet_DecryptEntry detour FAILED");
         }
+    }
+
+    /** RVA 0x00515940 ReliabilityLayer::IsDeadConnection - always return false to prevent timeout disconnect. */
+    const uint32_t RvaIsDeadConnection = 0x115940;
+    if (InstallDetour(RvaIsDeadConnection, 5, reinterpret_cast<void*>(&HookIsDeadConnection), &IsDeadConnectionTrampoline))
+    {
+        OriginalIsDeadConnection = reinterpret_cast<FIsDeadConnectionFn>(IsDeadConnectionTrampoline);
+        LOG("ReliabilityLayer::IsDeadConnection hooked (timeout disabled)");
+    }
+    else
+    {
+        LOG("ReliabilityLayer::IsDeadConnection hook FAILED");
     }
 }
 
