@@ -18,15 +18,16 @@ import {
 } from '@openfom/networking';
 import {
     RakNetMessageId,
+    LithTechMessageId,
     IdWorldLoginPacket,
     IdRegisterClientPacket,
     IdRegisterClientReturnPacket,
-    IdWorldSelectPacket,
     IdWorldServicePacket,
+    MsgPacketGroup,
+    MsgPreloadList,
+    MsgClientObjectId,
     WorldSelectSubId,
-    LtGuaranteedPacket,
-    MsgUnguaranteedUpdate,
-    IdUserPacket,
+    IdWorldSelectPacket,
 } from '@openfom/packets';
 import { configureLogger, debug as logDebug, error as logError, info as logInfo } from '@openfom/utils';
 import { loadRuntimeConfig } from './config';
@@ -74,8 +75,9 @@ interface WorldConnection {
     authenticated: boolean;
     registered: boolean;
     worldTimeOrigin: number;
-    lastHeartbeatAt: number;
     lithTechOutSeq: number;
+    connectStage: number;
+    pingInterval?: ReturnType<typeof setInterval>;
 }
 
 const connections = new Map<string, WorldConnection>();
@@ -115,7 +117,7 @@ function sendReliable(data: Buffer, address: RakSystemAddress): boolean {
     const success = peer.send(
         data,
         RakPriority.HIGH,
-        RakReliability.RELIABLE_ORDERED,
+        RakReliability.RELIABLE,
         0,
         address,
         false,
@@ -141,13 +143,14 @@ function sendUnreliable(data: Buffer, address: RakSystemAddress): boolean {
 }
 
 function sendLithTechBurst(conn: WorldConnection): void {
-    const seq = conn.lithTechOutSeq;
-    conn.lithTechOutSeq = (seq + 1) & 0x1fff;
-
-    const lithBurst = LtGuaranteedPacket.buildWorldLoginBurst(seq, conn.playerId, conn.playerId, conn.worldId);
-    const wrappedBurst = IdUserPacket.wrap(lithBurst).encode();
-    sendReliable(wrappedBurst, conn.address);
-    logInfo(`[World] -> LithTech burst (worldId=${conn.worldId}, playerId=${conn.playerId}, ${wrappedBurst.length - 1} bytes)`);
+    const packetGroup = MsgPacketGroup.buildWorldLoginBurst(
+        conn.playerId,
+        conn.worldId,
+        0.0,
+    );
+    const encoded = packetGroup.encode();
+    sendReliable(encoded, conn.address);
+    logInfo(`[World] -> SMSG_PACKETGROUP (NETPROTOCOLVERSION + YOURID + LOADWORLD) worldId=${conn.worldId}, playerId=${conn.playerId}`);
 }
 
 function handleWorldLogin(packet: IdWorldLoginPacket, address: RakSystemAddress): void {
@@ -182,10 +185,6 @@ function handleRegisterClient(packet: IdRegisterClientPacket, address: RakSystem
         return;
     }
 
-    // if (!conn.authenticated) {
-        logError(`[World] Connection ${key} not authenticated (missing 0x6b), seding REGISTER_CLIENT anyway`);
-        // return;
-    // }
     conn.authenticated = true;
 
     conn.playerId = playerId || conn.playerId;
@@ -202,7 +201,7 @@ function handleRegisterClient(packet: IdRegisterClientPacket, address: RakSystem
     sendReliable(responseBuffer, address);
     logInfo(`[World] -> 0x79 REGISTER_CLIENT_RETURN (worldId=${conn.worldId}, playerId=${conn.playerId}, ${responseBuffer.length} bytes)`);
 
-    // Send 0x7B WORLD_SELECT after 0x79 (observed in pcap)
+    // Send 0x7B WORLD_SELECT after 0x79
     const worldSelect = new IdWorldSelectPacket({
         playerId: conn.playerId,
         subId: WorldSelectSubId.WORLD_ID_INST,
@@ -212,8 +211,6 @@ function handleRegisterClient(packet: IdRegisterClientPacket, address: RakSystem
     const worldSelectBuffer = worldSelect.encode();
     sendReliable(worldSelectBuffer, address);
     logInfo(`[World] -> 0x7B WORLD_SELECT (worldId=${conn.worldId}, worldInst=${conn.worldInst}, ${worldSelectBuffer.length} bytes)`);
-
-    // sendLithTechBurst(conn);
 }
 
 function handleNewConnection(address: RakSystemAddress): void {
@@ -229,17 +226,11 @@ function handleNewConnection(address: RakSystemAddress): void {
         authenticated: false,
         registered: false,
         worldTimeOrigin: Date.now(),
-        lastHeartbeatAt: 0,
         lithTechOutSeq: 0,
+        connectStage: -1,
     };
     connections.set(key, conn);
 
-    const timestamp = new MsgUnguaranteedUpdate({
-        objectId: 1235,
-        gameTime: 1234,
-    });
-    const wrapped = IdUserPacket.wrap(timestamp).encode();
-    sendReliable(wrapped, address);
     sendLithTechBurst(conn);
 }
 
@@ -251,14 +242,43 @@ function handleWorldAuth(data: Buffer, address: RakSystemAddress): void {
         return;
     }
 
-    logInfo(`[World] 0x6b WORLD_AUTH from ${key} (${data.length} bytes) - marking authenticated`);
-    conn.authenticated = true;
+    logInfo(`[World] 0x6b WORLD_LOGIN_REQUEST from ${key} (${data.length} bytes)`);
+    // sendLithTechBurst(conn);
 }
 
 function handleDisconnect(address: RakSystemAddress): void {
     const key = getConnectionKey(address);
+    const conn = connections.get(key);
+    if (conn?.pingInterval) {
+        clearInterval(conn.pingInterval);
+    }
     logInfo(`[World] Disconnected: ${key}`);
     connections.delete(key);
+}
+
+function handleConnectStage(data: Buffer, address: RakSystemAddress): void {
+    const key = getConnectionKey(address);
+    const conn = connections.get(key);
+    if (!conn) {
+        logError(`[World] CONNECTSTAGE: No connection found for ${key}`);
+        return;
+    }
+
+    const stage = data[1];
+    conn.connectStage = stage;
+    logInfo(`[World] CMSG_CONNECTSTAGE from ${key}: stage=${stage}`);
+
+    if (stage === 0) {
+        logInfo(`[World] -> SMSG_PRELOADLIST (END) - client loaded world, sending preload end`);
+        const preloadEnd = MsgPreloadList.createEnd();
+        const encoded = preloadEnd.encode();
+        sendReliable(encoded, conn.address);
+    } else if (stage === 1) {
+        logInfo(`[World] -> SMSG_CLIENTOBJECTID - client preloaded, sending object ID ${conn.playerId}`);
+        const clientObjId = MsgClientObjectId.create(conn.playerId);
+        const encoded = clientObjId.encode();
+        sendReliable(encoded, conn.address);
+    }
 }
 
 async function mainLoop() {
@@ -268,7 +288,6 @@ async function mainLoop() {
     while (peer.isActive()) {
         let packet = peer.receive();
         while (packet) {
-            console.log('received packet');
             const addrIp = addressToIp(packet.systemAddress);
             const connection = connections.get(getConnectionKey(packet.systemAddress));
             const incomingPacket = {
@@ -301,7 +320,7 @@ async function mainLoop() {
                     break;
                 }
 
-                case 0x6b: {
+                case RakNetMessageId.ID_WORLD_LOGIN_REQUEST: {
                     handleWorldAuth(Buffer.from(packet.data), packet.systemAddress);
                     break;
                 }
@@ -319,38 +338,24 @@ async function mainLoop() {
                     break;
                 }
 
+                case LithTechMessageId.MSG_CONNECTSTAGE: {
+                    handleConnectStage(Buffer.from(packet.data), packet.systemAddress);
+                    break;
+                }
+
                 default:
-                    if (config.debug || messageId >= 0x50) {
-                        const addr = addressToString(packet.systemAddress);
-                        logInfo(`[World] Unhandled 0x${messageId.toString(16).padStart(2, '0')} from ${addr} (${packet.length} bytes)`);
-                        if (packet.length <= 32) {
-                            const hex = Array.from(packet.data)
-                                .map((b) => b.toString(16).padStart(2, '0'))
-                                .join(' ');
-                            logInfo(`         ${hex}`);
-                        }
+                    const addr = addressToString(packet.systemAddress);
+                    logInfo(`[World] Unhandled 0x${messageId.toString(16).padStart(2, '0')} from ${addr} (${packet.length} bytes)`);
+                    if (packet.length <= 32) {
+                        const hex = Array.from(packet.data)
+                            .map((b) => b.toString(16).padStart(2, '0'))
+                            .join(' ');
+                        logInfo(`         ${hex}`);
                     }
                     break;
             }
 
             packet = peer.receive();
-        }
-
-        const now = Date.now();
-        const heartbeatMs = 3000;
-        for (const conn of connections.values()) {
-            if (!conn.authenticated) continue;
-            if (conn.lastHeartbeatAt && (now - conn.lastHeartbeatAt) < heartbeatMs) continue;
-            conn.lastHeartbeatAt = now;
-
-            const elapsedSec = (now - conn.worldTimeOrigin) / 1000;
-            const updateMsg = MsgUnguaranteedUpdate.createHeartbeat(elapsedSec);
-
-            const seq = conn.lithTechOutSeq;
-            conn.lithTechOutSeq = (seq + 1) & 0x1fff;
-            const lithPacket = LtGuaranteedPacket.fromMessages(seq, [updateMsg]);
-            const wrapped = IdUserPacket.wrap(lithPacket).encode();
-            sendUnreliable(wrapped, conn.address);
         }
 
         await Bun.sleep(10);
