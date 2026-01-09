@@ -1848,3 +1848,49 @@ Property strings near 0x10139078 include: RepeatTimeMax, RepeatTimeMin, Repeat, 
 | 0x100B0570 | 0x000B0570 | RakNet_OP_DELETE_ARRAY6 | RakNet alloc/free wrapper | decomp | low |
 | 0x100B05D0 | 0x000B05D0 | RakNet_OP_NEW_ARRAY4 | RakNet alloc/free wrapper | decomp | low |
 | 0x100B0650 | 0x000B0650 | RangeNode_Dtor | DataStructures::RangeList/RangeNode | decomp + raknet src | med |
+
+#### Crypto / Hash (Object.lto)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100B1390 | 0x000B1390 | CSHA1_Ctor | SHA1 ctor + reset | decomp | med |
+| 0x100B3780 | 0x000B3780 | CSHA1_Update | SHA1 update | decomp | med |
+| 0x100B3A50 | 0x000B3A50 | CSHA1_Final | SHA1 finalize + digest | decomp | med |
+| 0x100B1430 | 0x000B1430 | CSHA1_Transform | SHA1 block transform | decomp | med |
+| 0x100B3E50 | 0x000B3E50 | Crypto_EncryptWithChecksum | Encrypt + checksum header | decomp | low |
+| 0x100B4050 | 0x000B4050 | Crypto_DecryptWithChecksum | Decrypt + checksum verify | decomp | low |
+| 0x100BEAD0 | 0x000BEAD0 | AES_SetKey | AES key schedule setup | decomp | med |
+| 0x100BDE50 | 0x000BDE50 | AES_EncryptBlock | AES encrypt 16B block | decomp | med |
+| 0x100BE5F0 | 0x000BE5F0 | AES_DecryptBlock | AES decrypt 16B block | decomp | med |
+
+#### BigInt / RSA Helpers (Object.lto)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100B78B0 | 0x000B78B0 | BigInt_ModExp_Montgomery | Montgomery modular exponentiation | decomp | med |
+| 0x100B79D0 | 0x000B79D0 | BigInt_IsProbablePrime | Miller-Rabin prime test | decomp | med |
+| 0x100B7C10 | 0x000B7C10 | BigInt_GeneratePrime | Prime generation loop | decomp | med |
+| 0x100B6A60 | 0x000B6A60 | BigInt_ModInverse | Modular inverse | decomp | med |
+| 0x100B7160 | 0x000B7160 | Montgomery_Reduce | Montgomery reduction | decomp | low |
+| 0x100B6900 | 0x000B6900 | BigInt_GCD | GCD | decomp | low |
+
+#### TCPInterface / PacketizedTCP (Object.lto)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100B9F80 | 0x000B9F80 | TCPInterface_Ctor | Init TCPInterface + StringCompressor | decomp | med |
+| 0x100BA110 | 0x000BA110 | TCPInterface_Dtor | Cleanup TCPInterface | decomp | med |
+| 0x100BA370 | 0x000BA370 | TCPInterface_Shutdown | Close sockets/queues | decomp | med |
+| 0x100B7CA0 | 0x000B7CA0 | PacketizedTCP_Ctor | PacketizedTCP init | decomp | med |
+| 0x100B7D70 | 0x000B7D70 | PacketizedTCP_Dtor | PacketizedTCP cleanup | decomp | med |
+| 0x100B92D0 | 0x000B92D0 | PacketizedTCP_RemoteClient_Ctor | Remote client init | decomp | low |
+| 0x100B9330 | 0x000B9330 | PacketizedTCP_RemoteClient_Dtor | Remote client destroy | decomp | low |
+| 0x10091610 | 0x00091610 | WinSock_AddRef | WSAStartup refcount | decomp | low |
+| 0x10091650 | 0x00091650 | WinSock_Release | WSACleanup refcount | decomp | low |
+
+#### ItemTemplate Helpers (Object.lto)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x100C0D70 | 0x000C0D70 | ItemTemplate_GetTypeById_Obj | Return template type | decomp | low |
+| 0x100C1E30 | 0x000C1E30 | ItemTemplate_IsWeaponType34 | Type 3/4 check | decomp | low |
+| 0x100C64F0 | 0x000C64F0 | ItemTemplate_RandomId_Type11or13_Flag | Random ID by type + flag | decomp | low |
+| 0x100C65C0 | 0x000C65C0 | ItemTemplate_RandomId_Type12or14_Flag | Random ID by type + flag | decomp | low |
+| 0x100C6690 | 0x000C6690 | ItemTemplate_RandomId_Type15_Flag | Random ID by type + flag | decomp | low |
+| 0x100C6BE0 | 0x000C6BE0 | ItemTemplate_RandomId_Type7 | Random ID by type | decomp | low |
