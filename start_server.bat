@@ -2,9 +2,13 @@
 setlocal
 cd /d "%~dp0Server"
 
+set BUN_EXE=
+if exist "%USERPROFILE%\\.bun\\bin\\bun.exe" set BUN_EXE=%USERPROFILE%\\.bun\\bin\\bun.exe
+if "%BUN_EXE%"=="" set BUN_EXE=bun
+
 if not exist node_modules (
   echo [Server] Installing dependencies...
-  bun install
+  "%BUN_EXE%" install
 )
 
 set MODE=
@@ -86,4 +90,4 @@ if not defined FOM_INI (
 
 echo [Server] Starting server mode=%SERVER_MODE% on UDP port %PORT%...
 echo [Server] Config: %FOM_INI%
-bun run --cwd apps\\master start
+"%BUN_EXE%" run --cwd apps\\master start

@@ -1,5 +1,11 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0Server"
 
-call "%~dp0start_server.bat" -mode world -port 62000
+if not exist node_modules (
+  echo [Server] Installing dependencies...
+  bun install
+)
+
+echo [Server] Starting world app on UDP port 62000...
+bun run --cwd apps\\world start
