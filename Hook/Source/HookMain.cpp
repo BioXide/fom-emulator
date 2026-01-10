@@ -2,9 +2,9 @@
 #include "HookConfig.h"
 #include "HookD3D9.h"
 #include "HookLogging.h"
-/** DLL entrypoint and startup threading. */
 #include "HookFoMProtocol.h"
 #include "HookItemOverrides.h"
+#include "HookLithTech.h"
 #include "HookOverlay.h"
 #include "HookRakNet.h"
 #include "HookState.h"
@@ -32,7 +32,7 @@ static DWORD WINAPI InitThread(LPVOID Parameter)
     GExeBase = reinterpret_cast<uint8_t*>(GetModuleHandleA(nullptr));
     EnsureD3D9Hooks();
     EnsureFoMProtocolHooks();
-    //EnsureItemOverrideHooks();
+    InstallLithTechMessageHooks();
     InstallRakNetDetours();
 
     return 0;

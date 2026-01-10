@@ -6,7 +6,7 @@
 // NIL
 #elif defined ( __APPLE__ ) || defined ( __APPLE_CC__ )
 #include <malloc/malloc.h>
-#include <alloc.h>
+#include <alloca.h>
 #elif defined(_WIN32)
 #include <malloc.h>
 #else

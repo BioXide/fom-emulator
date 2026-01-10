@@ -166,12 +166,12 @@ namespace DataStructures
 			if ( current->left == 0 )
 				left_height = 0;
 			else
-				left_height = Height( current->left );
+				left_height = this->Height( current->left );
 				
 			if ( current->right == 0 )
 				right_height = 0;
 			else
-				right_height = Height( current->right );
+				right_height = this->Height( current->right );
 				
 			if ( right_height - left_height == 2 )
 			{
@@ -199,7 +199,7 @@ namespace DataStructures
 			if ( current == this->root )
 				break;
 				
-			current = FindParent( *( current->item ) );
+			current = this->FindParent( *( current->item ) );
 			
 		}
 	}
@@ -226,7 +226,7 @@ namespace DataStructures
 		if ( A == 0 )
 			return false;
 			
-		return Height( A->right ) > Height( A->left );
+		return this->Height( A->right ) > this->Height( A->left );
 	}
 	
 	template <class BinarySearchTreeType>
@@ -235,7 +235,7 @@ namespace DataStructures
 		if ( A == 0 )
 			return false;
 			
-		return Height( A->left ) > Height( A->right );
+		return this->Height( A->left ) > this->Height( A->right );
 	}
 	
 	template <class BinarySearchTreeType>
@@ -272,8 +272,8 @@ namespace DataStructures
 		
 		*/
 		
-		B = FindParent( *( C->item ) );
-		A = FindParent( *( B->item ) );
+		B = this->FindParent( *( C->item ) );
+		A = this->FindParent( *( B->item ) );
 		D = C->right;
 		
 		if ( A )
@@ -336,8 +336,8 @@ namespace DataStructures
 		
 		*/
 		
-		B = FindParent( *( C->item ) );
-		A = FindParent( *( B->item ) );
+		B = this->FindParent( *( C->item ) );
+		A = this->FindParent( *( B->item ) );
 		D = C->left;
 		
 		if ( A )

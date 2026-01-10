@@ -50,6 +50,8 @@ export {
     type IdRegisterClientReturnData,
 } from './ID_REGISTER_CLIENT_RETURN';
 
+export * from './structs';
+
 export { IdWorldSelectPacket, WorldSelectSubId, type IdWorldSelectData } from './ID_WORLD_SELECT';
 
 export { IdWorldServicePacket, type IdWorldServiceData } from './ID_WORLDSERVICE';
@@ -57,6 +59,8 @@ export { IdWorldServicePacket, type IdWorldServiceData } from './ID_WORLDSERVICE
 export { IdUserPacket, type IdUserPacketData } from './ID_USER_PACKET';
 
 export { LtGuaranteedPacket, type LtGuaranteedData } from './LT_GUARANTEED';
+
+export { MsgPacketGroup, type MsgPacketGroupData } from './MSG_PACKETGROUP';
 
 export { MsgNetProtocolVersion, type MsgNetProtocolVersionData } from './MSG_NETPROTOCOLVERSION';
 
@@ -69,6 +73,8 @@ export { MsgLoadWorld, type MsgLoadWorldData } from './MSG_LOADWORLD';
 export { MsgUnguaranteedUpdate, type MsgUnguaranteedUpdateData } from './MSG_UNGUARANTEEDUPDATE';
 
 export { MsgMessage, type MsgMessageData } from './MSG_MESSAGE';
+
+export { MsgPreloadList, PreloadType, type MsgPreloadListData } from './MSG_PRELOADLIST';
 
 export {
     formatPacket,

@@ -28,7 +28,8 @@
 	  defined(__alpha__) || defined(__alpha) || defined(__ia64) || defined(__ia64__) || \
 	  defined(_M_ALPHA) || defined(ns32000) || defined(__ns32000__) || defined(sequent) || \
 	  defined(MIPSEL) || defined(_MIPSEL) || defined(sun386) || defined(__sun386__) || \
-	  defined(x86_64) || defined(__x86_64) || defined(_M_X64)
+	  defined(x86_64) || defined(__x86_64) || defined(_M_X64) || \
+	  defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 #  define LITTLE_ENDIAN
 # else
 #  error "Add your platform to the list"
