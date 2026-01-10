@@ -57,7 +57,8 @@
 /Server/**/temp-check/
 /Server/**/temp-check/**
 /Server/**/native/*.dll
-!/Server/*/native/raknet_ffi.dll
+!/Server/**/native/**/raknet_ffi.dll
+!/Server/**/native/**/lithnet_ffi.dll
 !/Client/
 !/Client/**/
 !/Client/Client_FoM/fom_hook.ini
