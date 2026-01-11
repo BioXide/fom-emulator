@@ -2,3 +2,4 @@ Build/
 *.dylib
 *.so
 *.dll
+!lithnet_ffi.dll
