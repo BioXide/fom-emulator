@@ -2026,3 +2026,28 @@ Property strings near 0x10139078 include: RepeatTimeMax, RepeatTimeMin, Repeat, 
 | 0x10049910 | 0x00049910 | Obj_Delete_AfterNullsub20 | nullsub_20 + delete | decomp | med |
 | 0x100498B0 | 0x000498B0 | Obj_Delete_After_10045BF0 | sub_10045BF0 + delete | decomp | med |
 | 0x10045BF0 | 0x00045BF0 | VtblDtor_ResetPtr | Calls vtbl dtor then nulls ptr | decomp | med |
+
+### Object.lto (image base 0x67350000)
+
+#### World login / profile (0x79)
+| VA | RVA | Symbol | Purpose | Evidence | Conf |
+|---|---|---|---|---|---|
+| 0x673CA850 | 0x0007A850 | Packet_ID_WORLD_LOGIN_DATA_Ctor | Initializes 0x79 packet defaults; sets CompactVec3 precision to 16 | decomp | high |
+| 0x673C8D80 | 0x00078D80 | ID_WORLD_LOGIN_Read | Reads 0x79 packet fields and blocks in order | decomp | high |
+| 0x673CAB00 | 0x0007AB00 | ID_WORLD_LOGIN_DATA_Write | Writes 0x79 packet fields and blocks (server->client) | name/xrefs | med |
+| 0x6743AB40 | 0x000EAB40 | WorldLogin_ReadProfileBlockA | Reads skill trees + 12/3/6 slot tables | decomp | high |
+| 0x6743AA40 | 0x000EAA40 | WorldLogin_ReadProfileBlockB | Reads 4x u16c metadata slots | decomp | high |
+| 0x67418D20 | 0x000C8D20 | WorldLogin_ReadProfileBlockC | Reads bit-packed ProfileC + optional 9x12 block | decomp | high |
+| 0x67418B80 | 0x000C8B80 | WorldLogin_WriteProfileBlockC | Writes ProfileC; gates 9x12 block if any word[11..19] set | decomp | high |
+| 0x674334A0 | 0x000E34A0 | WorldLogin_ReadProfileBlockD | Reads 53 u32c attribute values | decomp | high |
+| 0x67433440 | 0x000E3440 | WorldLogin_WriteProfileBlockD | Writes 53 u32c attribute values | name/xrefs | med |
+| 0x6741E500 | 0x000CE500 | WorldLogin_ReadSkillTreeList | Reads SkillTreeList (u16c + 3x u32c + count + entries) | decomp | high |
+| 0x6743BA60 | 0x000EBA60 | WorldLogin_ReadSkillTable | Reads 12-slot table (bit + optional SkillSlot) | decomp | high |
+| 0x6742B820 | 0x000DB820 | WorldLogin_ReadSkillEntry | Reads 48B SkillEntry fields (u16c/u8c/u32c) | decomp | high |
+| 0x673672C0 | 0x000172C0 | WorldLogin_ReadEntryG | Reads EntryG slot (bit + packed fields) | decomp | high |
+| 0x6742EC50 | 0x000DEC50 | WorldLogin_ReadTableI | Reads TableI header + entries | decomp | high |
+| 0x67439090 | 0x000E9090 | WorldLogin_ReadListK | Reads ListK header + entries | decomp | high |
+| 0x6742F070 | 0x000DF070 | WorldLogin_ReadCompactVec3S16Yaw | Reads CompactVec3 + yaw9 | decomp | high |
+| 0x6742F2F0 | 0x000DF2F0 | WorldLogin_CompactVec3_Init16 | Sets CompactVec3 precision to 16 | decomp | high |
+| 0x673DB590 | 0x0008B590 | BitStream_WriteBit1 | MSB-first bit writer (0x80 >> bitIndex) | disasm | high |
+| 0x67420E60 | 0x000D0E60 | CompressedU32_Read | Wrapper for BitStream_Read_u32c | decomp | med |
