@@ -13,34 +13,34 @@ u8  msgId   = 0x79
 payload     = VariableSizedPacket + LT BitStream compressed fields (u8c/u16c/u32c)
 ```
 Key points:
-- Uses LT BitStream compressed reads (not Huffman / not RakNet StringCompressor).
+- Uses LT BitStream compressed ints (u8c/u16c/u32c); StringBundleE/BlobH use LT Huffman reader (u32c bit-length + Huffman bits).
 - Some u32/u16 fields are byte-swapped on big-endian clients.
-- One blob is read via vtbl+56 (max 2048 bits) into `PlayerBlobH`.
+- StringBundleE fields and BlobH are read via vtbl+56 (max 2048 bits each), with u32c bit-length + Huffman bitstream.
 
 ## Field Table
 | Offset | Field | Type | Encoding | Notes |
 |---|---|---|---|---|
 | 0x0430 | worldId | u8c | LT BitStream compressed | Gate: must match SharedMem[0x1EEC1]. |
-| 0x0434 | worldInst | u32c | LT BitStream compressed | Gate: must match SharedMem[0x1EEC2]. |
+| 0x0434 | worldInst/playerIdGate | u32c | LT BitStream compressed | Gate: must match SharedMem[0x1EEC2] (observed to track playerId in current flow). |
 | 0x0438 | returnCode | u8c | LT BitStream compressed | 1=success; 4/5 UI errors; else retry. |
 | 0x043C | PlayerProfileA | block | see details | Skill trees + slot tables. |
 | 0x0878 | PlayerProfileB | block | see details | 4x records; only u16c on-wire. |
-| 0x08B8 | PlayerProfileC | block | bitfield | Appearance + ability IDs. |
-| 0x08EC | PlayerProfileD | u32c[53] | LT BitStream compressed | Stat table. |
-| 0x0CCC | PlayerStringsE | block | blob/string | SharedStringTable keys 11219/11224/126546. |
+| 0x08B8 | PlayerProfileC | block | bitfield | Appearance bitfield (48 bytes on-wire). |
+| 0x08EC | PlayerProfileD | u32c[53] | LT BitStream compressed | Stat table (attrs 0..3,5..52; last value may be reserved). |
+| 0x0CCC | PlayerStringsE | block | u32c bitlen + Huffman bits | SharedStringTable keys 11219/11224/126546. |
 | 0x0F28 | profileFlag0 | u8c | LT BitStream compressed | Unknown. |
 | 0x0F29 | profileFlag1 | u8c | LT BitStream compressed | Unknown. |
 | 0x0F2A | profileEntryCount | u16c | LT BitStream compressed | Count for profileEntries. |
-| 0x0F2C | profileEntries[] | block[] | ProfileC layout | count * 0x32 bytes. |
+| 0x0F2C | profileEntries[] | block[] | ProfileC layout | count * ProfileC bit layout (stored with 50-byte stride in memory). |
 | 0x49C4 | flag2 | bit | BitStream bit | Unknown. |
 | 0x49C8 | PlayerVecF | block | compact vec3 s16+yaw9 | Base spawn position. |
 | 0x49D8 | currencyA_u32c (field_18904_u32c) | u32c | LT BitStream compressed | Also written to SharedMem key 125506. |
 | 0x49DC | currencyB_u32c (field_18908_u32c) | u32c | LT BitStream compressed | Also written to SharedMem key 125508. |
 | 0x49E0 | flag3 | bit | BitStream bit | Written to SharedMem key 125510. |
 | 0x49E2 | valC_u16c | u16c | LT BitStream compressed | Written to SharedMem key 126514. |
-| 0x49E4 | entryG_header_u32 | u32c | LT BitStream compressed | Header for EntryG block. |
+| 0x49E4 | field_18916_u32c | u32c | LT BitStream compressed | Unknown u32 (read after valC). |
 | 0x49E8 | PlayerEntryG[10] | block[] | see details | 10 entries, 12 bytes each. |
-| 0x4A60 | PlayerBlobH | blob | vtbl+56 (max 2048 bits) | Cache list; count at +0x01. |
+| 0x4A60 | PlayerBlobH | blob | u32c bitlen + Huffman bits | Read via vtbl+56 (max 2048 bits); cache list count at +0x01. |
 | 0x0C9C | PlayerTableI | block | see details | Copied to slot index 4. |
 | 0x4A80 | PlayerVecJ | block | compact vec3 s16+yaw9 | Override spawn position/rotation. |
 | 0x4A90 | hasOverrideSpawn | bit | BitStream bit | Enables VecJ override. |
@@ -52,7 +52,7 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
 
 ### World header gates
 - `worldId` must match SharedMem[0x1EEC1] (via `SharedMem_ReadDword_Locked(this, 0)`).
-- `worldInst` must match SharedMem[0x1EEC2] (via `SharedMem_ReadDword_Locked(dword_101B4508, 91)`).
+- `worldInst` gate uses SharedMem[0x1EEC2] (via `SharedMem_ReadDword_Locked(dword_101B4508, 91)`); in current flow this value matches playerId.
 - `returnCode`:
   - 1 => success path (cache/apply profile + spawn).
   - 4 => UI msg 1724, reset state.
@@ -78,10 +78,6 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
   - +0x2F8 SkillTable6 (6 * 48B slots)
            * per-slot: present bit; if 0 => slot zeroed; if 1 => u32c slotId + WorldLoginSkillEntry48
   - +0x41C SkillTreeListB (same layout as A)
-  - +0x42C u32
-  - +0x430 u32
-  - +0x434 u32
-  - +0x438 u8
 - WorldLoginSkillEntry48 layout (WorldLogin_ReadSkillEntry; within each 48B slot).
   NOTE: Not the same as Packet_ID_SKILLS ItemStatEntry (20B) in AddressMap_CShell_dll.md.
   Defaults from WorldLogin_SkillTable{12,6,3}_Init.
@@ -109,7 +105,9 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
 - Consumer scan: only `Handle_ID_WORLD_LOGIN` calls slot index 1; no other object.lto call sites use index 1.
 
 ### PlayerProfileC (WorldLogin_ReadProfileBlockC)
-- Bitfield/packed stats blob (0x32 bytes).
+- On-wire: 0x30 bytes total (packed appearance bitfield only).
+- The 0x32-byte stride used by `profileEntries`/`PlayerBlobH` includes a local u16 marker (not read on-wire).
+- In-memory: 0x34 bytes (appearanceMarker + isInitialized u8 + pad u8); isInitialized is local-only.
 - Bit layout (in order, bits): 1,1,5,5,32,5,6,4,12,12,12,
   then if bit(flag) set: 9x12, then 1,1,1,1.
 - Writer sets the extra 9x12 block only if any word[11..19] is nonzero.
@@ -162,6 +160,7 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
 
 ### PlayerProfileD (WorldLogin_ReadProfileBlockD)
 - u32c[53] (53 x 32-bit compressed values).
+- Mapping: indices 0..3 => attrs 0..3; indices 4..52 => attrs 5..52 (attr 4 derived from currencyA - currencyB; last value appears reserved).
 - ProfileD has larger defaulted structure (see ctor):
   - ctor sets 53-byte array at +0x27D to 53
   - ctor sets u32[53] at +0x2B4 to 0
@@ -227,12 +226,13 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
   | 0x34 | VortexEmitterCooldownSeconds | n/a | value passed into msg 5661 ("Portable Vortex Particle Emitter ... %1 seconds"). Safe default = 0 (ignored if 0x33=0). |
 
 ### PlayerStringsE (WorldLogin_ReadStringBundleE)
-- +0x00  u32c (id?)
+- +0x00  u32c bundleId
 - +0x04  flag bit
-- +0x05  strA (string/blob; max 2048 bits)
-- +0x19  strB (string/blob; max 2048 bits)
-- +0x39  strC (string/blob; max 2048 bits)
-- +0x239 strD (string/blob; max 2048 bits)
+- +0x05  strA (u32c bit-length + Huffman bitstream; max 2048 bits)
+- +0x19  strB (u32c bit-length + Huffman bitstream; max 2048 bits)
+- +0x39  strC (u32c bit-length + Huffman bitstream; max 2048 bits)
+- +0x239 strD (u32c bit-length + Huffman bitstream; max 2048 bits)
+- Reader uses vtbl+56 for each string (u32c bit-length prefix + Huffman bits); no byte alignment between fields.
 - Handler uses SharedStringTable_WriteAt with keys:
   - 11219 <- strA
   - 11224 <- strB+strC
@@ -243,7 +243,7 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
   - key 126546 is only stored in cshell (no read found yet).
 
 ### profileEntryCount / profileEntries
-- profileEntries use the same ProfileC bit layout (0x32 bytes each).
+- profileEntries use the same ProfileC bit layout (stored at 50-byte stride; marker is local-only).
 - Handler only uses these to seed `AppearanceCache_BuildFromProfileC` (no other consumers).
 - Safe default: count=0 (skip appearance loop).
 
@@ -279,8 +279,9 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
 ### PlayerBlobH (vtbl+56 read)
 - Used as a cache list in handler:
   - count = u16 at +0x01
-  - entries = 0x32 bytes each starting at +0x03 (ProfileC layout)
+  - entries = ProfileC bit layout stored at 50-byte stride (marker is local-only)
   - each entry fed into `AppearanceCache_BuildFromProfileC`
+- On-wire encoding matches StringBundleE: u32c bit-length + Huffman bits, max 2048 bits.
 - Safe default: count=0 (skip cache warmup).
 
 ### PlayerTableI (WorldLogin_ReadTableI)
@@ -327,14 +328,19 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
   - WorldLogin_ReadTableI @ 0x100DDE70
   - WorldLogin_ReadListK @ 0x100E63C0
   - AppearanceCache_BuildFromProfileC @ 0x10006F50
+- ida1 (object.lto):
+  - ID_WORLD_LOGIN_Read @ 0x71DB8D80
+  - WorldLogin_ReadStringBundleE @ 0x71DB8B80
+  - ReadBlob2048 call site @ 0x71DB8FE9
 
 ## Validation
 - ida3: verified 01/07/26 (decompile + disasm)
+- ida1: verified 01/10/26 (decompile + read-order confirmation)
 - ida2: n/a
 
 ## Notes / Edge Cases
 - Min-viable packet checklist (safe defaults):
-  - Must match world gates: `worldId/worldInst` must equal SharedMem keys 0x1EEC1/0x1EEC2.
+  - Must match world gates: `worldId` + `playerId gate` must equal SharedMem keys 0x1EEC1/0x1EEC2 (observed to track playerId).
   - `returnCode` must be 1 to reach success path (anything else triggers retry or UI error).
   - ProfileD: set all 53 u32c to 0 (safe). Indices 0x31..0x34: keep 0.
   - ProfileC: required; all-zero accepted (default appearance path).

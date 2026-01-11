@@ -60,7 +60,7 @@ switch (subId):
 | 0x430 | playerId | u32 | compressed | Must match client's player |
 | 0x434 | subId | u8 | compressed | Dispatch type |
 | 0x435 | worldId | u8 | compressed | For subId 4/7 |
-| 0x436 | worldInst | u8 | compressed | For subId 4/7 |
+| 0x436 | worldInst | u8 | compressed | For subId 4/7; runtime login gate observed to match playerId |
 | 0x438 | itemsPayload | ItemsAddedPayload | - | For subId 2 (36 bytes) |
 | 0x45C | sub3_u32 | u32 | compressed | For subId 3 |
 | 0x460 | sub6List | Sub6List | - | For subId 6 (28+ bytes) |
@@ -129,7 +129,7 @@ u8c   worldInst         # Target world instance
 
 **Handler Actions** (@ 0x6589933D):
 1. `SharedMem[0x1EEC1] = worldId`
-2. `SharedMem[0x1EEC2] = worldInst`
+2. `SharedMem[0x1EEC2] = worldInst` (decomp); runtime login gate observed to match playerId
 3. `SharedMem[0x1EEC0] = 1` (login state flag)
 4. `LoginUI_ShowMessage(11)` (show "Connecting" UI)
 
@@ -198,7 +198,7 @@ HandlePacket_ID_WORLD_SELECT_7B(payload):
     switch pkt.subId:
         case 4:
             SharedMem_Write(g_pWorldMgr, 0x1EEC1, pkt.worldId)
-            SharedMem_Write(g_pWorldMgr, 0x1EEC2, pkt.worldInst)
+            SharedMem_Write(g_pWorldMgr, 0x1EEC2, pkt.worldInst)  # decomp; runtime gate observed to match playerId
             SharedMem_Write(g_pWorldMgr, 0x1EEC0, 1)  # Login flag
             LoginUI_ShowMessage(11)
             break
@@ -311,7 +311,7 @@ this is caused by object message 0x7A sent to player object, not by 0x7B packet 
 // After successful login (0x6F), trigger world selection
 const playerId = 12345;  // From 0x6F response
 const worldId = 1;       // Target world
-const worldInst = 1;     // Instance 1
+const worldInst = playerId; // Observed login gate expects SharedMem[0x1EEC2] == playerId
 
 // Build and send
 const packet = buildWorldSelectPacket(playerId, worldId, worldInst);
