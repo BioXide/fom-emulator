@@ -22,8 +22,8 @@ This is a large, complex packet sent from World Server → Client in response to
 |--------|------|-------|-------|
 | 0x428 (1064) | u8 | packetId | Always 0x79 (121) |
 | 0x430 (1072) | u8c | worldId | Compressed u8 |
-| 0x434 (1076) | u32c | playerId | Compressed u32 |
-| 0x438 (1080) | u8c | flags | Compressed u8 |
+| 0x434 (1076) | u32c | playerId | Compressed u32 (used as login gate; matches SharedMem[0x1EEC2]) |
+| 0x438 (1080) | u8c | returnCode | Compressed u8 |
 
 ### ProfileA Block (offset 0x43C / 1084)
 Written by `sub_100EAAF0` → calls 5 sub-writers:
@@ -64,7 +64,7 @@ Written by `WorldLogin_WriteProfileBlockC` @ `0x100c8b80`
 Read by `WorldLogin_ReadProfileBlockC` @ `0x100c8d20`
 Used by `AppearanceCache_BuildFromProfileC` @ `0x10006f50` for character model selection
 
-**Character Appearance Structure** (50 bytes unpacked to u16[25]):
+**Character Appearance Structure** (48 bytes on-wire; 50-byte stride in list adds 2-byte local marker):
 
 | Index | Bits | Field | Description |
 |-------|------|-------|-------------|
@@ -111,7 +111,7 @@ fall back to default textures, but may still cause issues with model loading.
 ### ProfileD Block (offset 0x8EC / 2284)
 Written by `WorldLogin_WriteProfileBlockD` @ `0x100e3440`
 ```
-for i in 0..53:
+for i in 0..52:
     u32c  - array of 53 compressed u32 values
 ```
 
@@ -189,22 +189,22 @@ else:
 bits[9] - offset 12
 ```
 
-### Timestamp Fields (offset 0x49D8 / 18904)
+### Currency Fields (offset 0x49D8 / 18904)
 ```
-u32c  - timestamp1 at 0x49D8 (18904)
-u32c  - timestamp2 at 0x49DC (18908)
+u32c  - currencyA at 0x49D8 (18904)
+u32c  - currencyB at 0x49DC (18908)
 ```
 
 ### Flag + ID (offset 0x49E0 / 18912)
 ```
 bit   - flag at 0x49E0 (18912)
 u16c  - id at 0x49E2 (18914)
+u32c  - field_18916 at 0x49E4 (18916)
 ```
 
-### EntryGBlock (offset 0x49E4 / 18916)
-Written by `WorldLogin_WriteEntryGBlock` @ `0x10017390`
+### EntryGBlock (offset 0x49E8 / 18920)
+Written by `WorldLogin_WriteEntryG` @ `0x100171e0`
 ```
-u32c  - header (entryHeader)
 for i in 0..10:
     WorldLogin_WriteEntryG (12 bytes each)
 ```
@@ -243,29 +243,29 @@ Written by `sub_100DDE70` (see TableI format above)
 ### CompactVec3 Block 2 (offset 0x4A80 / 19072)
 Same format as CompactVec3 Block 1
 
-### Final Flag + Block (offset 0x4A90 / 19088)
+### Final Flag + ListK (offset 0x4A90 / 19088)
 ```
 bit   - flag at 0x4A90 (19088)
-block - sub_100E63C0 at 0x4A94 (19092)
+block - WorldLogin_ReadListK at 0x4A94 (19092)
 ```
 
-**sub_100E63C0 format**:
+ListK format:
 ```
-u32c  - header at offset 0
-sub_100D0E50(this+4, bs)  // nested block
-u32c  - count = (*(this+16) - *(this+12)) >> 2
-[count × entries via sub_100E62F0]
+u32c  - headerA
+u32c  - headerB
+u32c  - count
+[count x entries]:
+  u16c id
+  u8c  value
+  bit  flag
 ```
-
----
-
 ## Default Values (from Constructor)
 
 | Offset | Value | Purpose |
 |--------|-------|---------|
 | 0x428 (1064) | 121 (0x79) | Packet ID |
 | 0x430 (1072) | -1 (0xFF) | worldId default |
-| 0x438 (1080) | 0 | flags |
+| 0x438 (1080) | 0 | returnCode |
 | 0xF28 (3880) | 3 | flag1 |
 | 0xF29 (3881) | 0 | flag2 |
 | 0xF2A (3882) | 0 | array count |
@@ -280,7 +280,7 @@ u32c  - count = (*(this+16) - *(this+12)) >> 2
 
 For initial progression, write minimal valid structure:
 
-1. **Header**: packetId=0x79, worldId, playerId, flags=0
+1. **Header**: packetId=0x79, worldId, playerId, returnCode=1
 2. **ProfileA**: 
    - sub_100CA710: u16c(0), u32c(0), u32c(0), u32c(0), u16c(0) = empty array
    - sub_100EBB30: 12× bit(0)
@@ -293,13 +293,13 @@ For initial progression, write minimal valid structure:
 6. **StringBundleE**: u32c(0), bit(0), 4× blob(0)
 7. **Flags**: u8c(3), u8c(0), u16c(0)
 8. **Vec3 Block 1**: zeros + bits[9]=0
-9. **Timestamps**: u32c(0), u32c(0)
-10. **Flag+ID**: bit(0), u16c(0)
-11. **EntryGBlock**: u32c(0), 10× bit(0)
+9. **Currency**: u32c(0), u32c(0)
+10. **Flag+ID**: bit(0), u16c(0), u32c(0)
+11. **EntryGBlock**: 10x bit(0)
 12. **Blob2048**: length=0
 13. **Block0C9C**: u8c×4(0), u32c(0), u32c(0)
 14. **Vec3 Block 2**: zeros
-15. **Final**: bit(0), u32c(0), nested(0), u32c(0)
+15. **ListK**: bit(0), u32c(0), u32c(0), u32c(0)
 
 ---
 
