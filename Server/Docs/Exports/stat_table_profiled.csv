@@ -1,0 +1,54 @@
+stat_id,idx_hex,name,string_id,scale
+0,0x00,Health,6300,1000
+1,0x01,Stamina,6301,10000
+2,0x02,Bio Energy,6302,1000
+3,0x03,Aura,6303,1000
+4,0x04,Universal Credits,6304,1000000000
+5,0x05,Faction Credits,22103,1000000000
+6,0x06,Penalty,6306,1000000000
+7,0x07,Prisoner Status,6307,32
+8,0x08,Highest Penalty,6308,1000000000
+9,0x09,Most-Wanted Status,6309,1
+10,0x0A,Wanted Status,6310,1
+11,0x0B,Agility,6311,1000
+12,0x0C,Ballistic Damage,6312,1000
+13,0x0D,Energy Damage,6313,1000
+14,0x0E,Bio Damage,6314,1000
+15,0x0F,Aura Damage,6315,1000
+16,0x10,Destruction,6316,10000
+17,0x11,Weapon Recoil,6317,3000
+18,0x12,Armor,29905,1000
+19,0x13,Shielding,6319,1000
+20,0x14,Resistance,6320,1000
+21,0x15,Reflection,6321,1000
+22,0x16,Health Regeneration,6322,1000
+23,0x17,Stamina Regeneration,6323,600
+24,0x18,Bio Regeneration,6324,1000
+25,0x19,Aura Regeneration,6325,1000
+26,0x1A,Coins,6326,1000000000
+27,0x1B,Healing Cooldown,6427,4294967295
+28,0x1C,Food Cooldown,6428,4294967295
+29,0x1D,Xeno Damage,6329,1000
+30,0x1E,Health Drain,6330,1000
+31,0x1F,Stamina Drain,6331,1000
+32,0x20,Bio Energy Drain,6332,1000
+33,0x21,Aura Drain,6333,1000
+34,0x22,Protection Bypass,6334,1000
+35,0x23,Effective Range,6335,5000
+36,0x24,Weapon Fire Delay,6336,2000
+37,0x25,Blank 1,6337,1000
+38,0x26,Blank 2,6338,1000
+39,0x27,Weight,6339,500000
+40,0x28,Jump Velocity Multiplier,6340,2000
+41,0x29,Fall Damage Multiplier,6341,1000
+42,0x2A,Nightvision,6342,1
+43,0x2B,Soundless Movement,6343,1
+44,0x2C,Activation Distance,6344,500
+45,0x2D,Sprint Speed Multiplier,6345,2000
+46,0x2E,Max Stamina,6346,10000
+47,0x2F,Bio Energy Replenishing Cooldown,6347,4294967295
+48,0x30,Aura Healing Cooldown,6348,4294967295
+49,0x31,ShieldSettingOverrideFlag,n/a,5
+50,0x32,Unknown,n/a,300
+51,0x33,VortexEmitterCooldownFlag,n/a,30
+52,0x34,VortexEmitterCooldownSeconds,n/a,600
