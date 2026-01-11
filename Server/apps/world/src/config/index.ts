@@ -6,8 +6,11 @@ export interface ServerConfig {
     maxConnections: number;
     password: string;
     debug: boolean;
+    worldId: number;
     worldInst: number;
 }
+
+export const DEFAULT_WORLD_ID = 1;
 
 export interface PacketLogConfig {
     quiet: boolean;
@@ -75,6 +78,7 @@ export function loadRuntimeConfig(): RuntimeConfig {
         maxConnections: parseInt(env.MAX_CONNECTIONS || '100', 10),
         password: env.SERVER_PASSWORD || '37eG87Ph',
         debug: parseBool(env.DEBUG, true),
+        worldId: parseInt(env.WORLD_ID || String(DEFAULT_WORLD_ID), 10),
         worldInst: parseInt(env.WORLD_INST || '0', 10),
     };
 

@@ -107,6 +107,8 @@ export class Connection {
     loginResponseAckCount: number = 0;
     lastLoginResponseMsgNum: number | null = null;
     lastLoginResponseSentAt: number = 0;
+    loginResetTimer: ReturnType<typeof setTimeout> | null = null;
+    loginResetAt: number = 0;
 
     // LithTech state
     lithTechOutSeq: number = 0;

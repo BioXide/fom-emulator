@@ -166,7 +166,7 @@ function handleWorldLogin(packet: IdWorldLoginPacket, address: RakSystemAddress)
     }
 
     conn.playerId = playerId || 1;
-    conn.worldId = worldId || 1;
+    conn.worldId = worldId || config.worldId;
     conn.worldInst = worldInst || config.worldInst;
     conn.authenticated = true;
 
@@ -221,7 +221,7 @@ function handleNewConnection(address: RakSystemAddress): void {
         address,
         key,
         playerId: 1,
-        worldId: 1,
+        worldId: config.worldId,
         worldInst: config.worldInst,
         authenticated: false,
         registered: false,

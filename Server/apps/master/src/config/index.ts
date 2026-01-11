@@ -15,11 +15,14 @@ export interface ServerConfig {
     acceptLoginAuthWithoutUser: boolean;
     resendDuplicateLogin6D: boolean;
     loginClientVersion: number;
+    loginResetDelayMs: number;
     worldSelectWorldId: number;
     worldSelectWorldInst: number;
     worldSelectPlayerId: number;
     worldSelectPlayerIdRandom: boolean;
 }
+
+export const DEFAULT_WORLD_ID = 1;
 
 export interface PacketLogConfig {
     quiet: boolean;
@@ -96,7 +99,8 @@ export function loadRuntimeConfig(): RuntimeConfig {
         acceptLoginAuthWithoutUser: parseBool(env.ACCEPT_AUTH_WITHOUT_USER, false),
         resendDuplicateLogin6D: parseBool(env.RESEND_DUPLICATE_6D, false),
         loginClientVersion: parseInt(env.LOGIN_CLIENT_VERSION || '0', 10),
-        worldSelectWorldId: parseInt(env.WORLD_ID || '0', 10),
+        loginResetDelayMs: parseInt(env.LOGIN_RESET_DELAY_MS || '3000', 10),
+        worldSelectWorldId: parseInt(env.WORLD_ID || String(DEFAULT_WORLD_ID), 10),
         worldSelectWorldInst: parseInt(env.WORLD_INST || '0', 10),
         worldSelectPlayerId: parseInt(env.WORLD_SELECT_PLAYER_ID || '0', 10),
         worldSelectPlayerIdRandom: parseBool(env.WORLD_SELECT_PLAYER_ID_RANDOM, false),

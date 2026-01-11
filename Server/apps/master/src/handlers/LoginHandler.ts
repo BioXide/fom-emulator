@@ -24,6 +24,7 @@ import {
     IdWorldSelectPacket,
 } from '@openfom/packets';
 import { Connection, LoginPhase } from '../network/Connection';
+import { DEFAULT_WORLD_ID } from '../config';
 import { info as logInfo } from '@openfom/utils';
 
 export interface LoginHandlerConfig {
@@ -37,6 +38,7 @@ export interface LoginHandlerConfig {
     acceptLoginAuthWithoutUser?: boolean;
     resendDuplicateLogin6D?: boolean;
     loginClientVersion?: number;
+    loginResetDelayMs?: number;
     worldSelectWorldId?: number;
     worldSelectWorldInst?: number;
     worldSelectPlayerId?: number;
@@ -57,6 +59,7 @@ export class LoginHandler {
     }
 
     releaseConnection(_connection: Connection): void {
+        this.clearLoginResetTimer(_connection, 'release');
     }
 
     /**
@@ -152,6 +155,7 @@ export class LoginHandler {
 
         if (connection.loginPhase === LoginPhase.AUTHENTICATED) {
             this.log(`[Login] already authenticated user="${username}"`);
+            this.scheduleLoginReset(connection, 'login_request');
             if (strictLogin) {
                 return {
                     data: new IdLoginRequestReturnPacket({
@@ -254,6 +258,7 @@ export class LoginHandler {
             connection.authenticated = true;
             connection.authenticatedUser = username;
             connection.loginPhase = LoginPhase.AUTHENTICATED;
+            this.clearLoginResetTimer(connection, 'login_success');
             connection.pendingLoginUser = '';
             connection.pendingLoginClientVersion = 0;
             connection.pendingLoginAt = 0;
@@ -266,8 +271,8 @@ export class LoginHandler {
             ? this.resolveWorldSelectPlayerId(connection)
             : 0;
 
-        const defaultWorldId = this.config.worldSelectWorldId ?? 1;
-        const currentWorldId = this.config.worldSelectWorldId ?? 1;
+        const defaultWorldId = this.config.worldSelectWorldId || DEFAULT_WORLD_ID;
+        const currentWorldId = this.config.worldSelectWorldId || DEFAULT_WORLD_ID;
         const loginReturn = new IdLoginReturnPacket({
             status,
             playerId,
@@ -306,6 +311,7 @@ export class LoginHandler {
 
         const { worldId, worldInst, playerId, worldConst } = packet;
 
+        this.clearLoginResetTimer(connection, 'world_login');
         connection.worldId = worldId;
         connection.worldInst = worldInst;
         connection.playerId = playerId;
@@ -313,6 +319,7 @@ export class LoginHandler {
         connection.worldLoginWorldInst = worldInst;
         connection.worldLoginPlayerId = playerId;
         connection.worldLoginWorldConst = worldConst;
+        connection.loginPhase = LoginPhase.WORLD_PENDING;
 
         this.log(`[Login72] worldId=${worldId} inst=${worldInst} playerId=${playerId} const=0x${worldConst.toString(16)}`);
 
@@ -386,5 +393,70 @@ export class LoginHandler {
         if (this.config.debug || this.config.loginDebug) {
             logInfo(message);
         }
+    }
+
+    private scheduleLoginReset(connection: Connection, reason: string): void {
+        const delayMs = this.config.loginResetDelayMs ?? 0;
+        if (delayMs <= 0) return;
+        if (connection.loginResetTimer) return;
+        if (connection.isInWorld() || connection.loginPhase !== LoginPhase.AUTHENTICATED) return;
+        connection.loginResetAt = Date.now() + delayMs;
+        this.log(`[Login] schedule reset in ${delayMs}ms for ${connection.key} (${reason})`);
+        connection.loginResetTimer = setTimeout(() => {
+            connection.loginResetTimer = null;
+            connection.loginResetAt = 0;
+            this.log(`[Login] auto-reset ${connection.key} (${reason})`);
+            this.resetLoginState(connection);
+        }, delayMs);
+    }
+
+    private clearLoginResetTimer(connection: Connection, reason: string): void {
+        if (!connection.loginResetTimer) return;
+        clearTimeout(connection.loginResetTimer);
+        connection.loginResetTimer = null;
+        connection.loginResetAt = 0;
+        this.log(`[Login] cancel reset for ${connection.key} (${reason})`);
+    }
+
+    private resetLoginState(connection: Connection): void {
+        connection.loginPhase = LoginPhase.CONNECTED;
+        connection.pendingLoginUser = '';
+        connection.pendingLoginClientVersion = 0;
+        connection.pendingLoginToken = 0;
+        connection.pendingLoginSession = '';
+        connection.pendingLoginAt = 0;
+        connection.username = '';
+        connection.authenticated = false;
+        connection.authenticatedUser = null;
+        connection.clientId = 0;
+        connection.loginAuthUsername = '';
+        connection.loginAuthComputer = '';
+        connection.loginAuthPasswordHash = '';
+        connection.loginAuthMacAddress = '';
+        connection.loginAuthLoginToken = '';
+        connection.loginAuthFileCRCs = [];
+        connection.loginAuthSteamTicket = false;
+        connection.loginAuthSteamTicketLength = 0;
+        connection.loginAuthSteamTicketBytes = 0;
+        connection.worldId = 0;
+        connection.worldInst = 0;
+        connection.playerId = 0;
+        connection.worldSelectSent = false;
+        connection.worldSelectWorldId = 0;
+        connection.worldSelectWorldInst = 0;
+        connection.worldSelectPlayerId = 0;
+        connection.worldLoginWorldId = 0;
+        connection.worldLoginWorldInst = 0;
+        connection.worldLoginPlayerId = 0;
+        connection.worldLoginWorldConst = 0;
+        connection.worldConnectStage = -1;
+        connection.worldSpawnSent = false;
+        connection.worldSpawnObjectId = 0;
+        connection.worldTimeOrigin = 0;
+        connection.worldLastHeartbeatAt = 0;
+        connection.loginResponseSendCount = 0;
+        connection.loginResponseAckCount = 0;
+        connection.lastLoginResponseMsgNum = null;
+        connection.lastLoginResponseSentAt = 0;
     }
 }

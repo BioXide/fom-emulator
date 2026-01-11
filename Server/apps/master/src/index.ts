@@ -105,6 +105,7 @@ const loginHandler = new LoginHandler({
     acceptLoginAuthWithoutUser: config.acceptLoginAuthWithoutUser,
     resendDuplicateLogin6D: config.resendDuplicateLogin6D,
     loginClientVersion: config.loginClientVersion,
+    loginResetDelayMs: config.loginResetDelayMs,
     worldSelectWorldId: config.worldSelectWorldId,
     worldSelectWorldInst: config.worldSelectWorldInst,
     worldSelectPlayerId: config.worldSelectPlayerId,
