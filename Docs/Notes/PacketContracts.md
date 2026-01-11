@@ -39,7 +39,7 @@ Max sizes & invariants:
 
 2) **Confirm bit order**
    - RakNet BitStream = **MSB-first** per byte.
-   - LithTech payloads are **LSB-first**; repack to MSB before Rak decode.
+   - FoM LithTech BitStream is **MSB-first** as well (0x80 >> bitIndex); do not repack unless IDA proves otherwise.
 
 3) **Match encoder to field**
    - `WriteCompressed` ↔ `ReadCompressed`
@@ -69,4 +69,3 @@ Use the decoder harness to try:
 - LSB + repack + raw
 
 The correct variant must pass invariants and score highest; all others are rejected.
-
