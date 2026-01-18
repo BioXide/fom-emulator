@@ -4,18 +4,6 @@
 - Direction: master -> client
 - Purpose: status + username echo for login request
 
-## On-wire encoding (source of truth)
-```
-ID_LOGIN_REQUEST_RETURN (0x6D)
-u8   msgId           = 0x6D
-u8   status          = BitStream_WriteByteArrayCompressed (bitLength=8)
-u32  huffmanBitCount = BitStream_WriteCompressed_U32 (byte-array compressed)
-bits huffmanBits     = Huffman(username), bit-aligned, length = bitCount
-```
-Key points:
-- The client write path uses `BitStream_WriteByteArrayCompressed` for `status`.
-- CShell read path uses `RakNet::BitStream::ReadCompressed` for 8 bits (matches 8-bit value but naming differs).
-
 ## Field Table
 | Offset | Field | Type | Encoding | Notes |
 |---|---|---|---|---|
@@ -46,3 +34,4 @@ Key points:
 | LOGIN_REQUEST_RETURN_SUCCESS | 1 |
 | LOGIN_REQUEST_RETURN_OUTDATED_CLIENT | 2 |
 | LOGIN_REQUEST_RETURN_ALREADY_LOGGED_IN | 3 |
+

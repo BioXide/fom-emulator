@@ -4,9 +4,19 @@
 - Direction: master -> client
 - Purpose: login result + account/world payload
 
-## On-wire encoding (source of truth)
-
-Server response to `ID_LOGIN`. Contains the authentication result, player information, account type, ban status, and when `playerID != 0`, extended character/world data.
+## Field Table
+| Offset | Field | Type | Encoding | Notes |
+|---|---|---|---|---|
+| 0x00 | msgId | u8 | raw | 0x6F |
+| 0x01 | status | u8 | compressed | LoginReturnStatus |
+| 0x.. | playerId | u32 | compressed | When 0, packet ends |
+| 0x.. | accountType | u8 | compressed | Only if playerId != 0 |
+| 0x.. | isFullAccount | bit | raw | Only if playerId != 0 |
+| 0x.. | hasCharFlags | bit | raw | Only if playerId != 0 |
+| 0x.. | clientVersion | u16 | compressed | Only if playerId != 0 |
+| 0x.. | isBanned | bit | raw | Only if playerId != 0 |
+| 0x.. | banLength | string | encoded | Only if isBanned |
+| 0x.. | banReason | string | encoded | Only if isBanned |
 
 ## Read/Write (decomp)
 - Read: `CShell.dll` @ `0x658935F0`
@@ -19,25 +29,6 @@ Server response to `ID_LOGIN`. Contains the authentication result, player inform
 ## Validation
 - ida: n/a
 - ida2: verified 01/05/26 (decompile)
-
-### Wire Format
-
-```
-Packet_ID_LOGIN_RETURN
-├── status: uint8                                // LoginReturnStatus (compressed)
-├── playerID: uint32                             // compressed
-│
-└── [if playerID != 0]
-    ├── accountType: uint8                       // AccountType (compressed)
-    ├── isFullAccount: bool                      // bit - enables full account features (faction levels, consumables)
-    ├── hasCharFlags: bool                       // bit - character data flags (written to SharedMem[0x1DE7E])
-    ├── clientVersion: uint16                    // compressed
-    ├── isBanned: bool                           // bit
-    │
-    ├── [if isBanned]
-    │   ├── banLength: string                    // encoded
-    │   └── banReason: string                    // encoded
-    │
     ├── worldIDs: vector<uint32>                 // FUN_1013db60
     │   ├── count: uint8                         // compressed
     │   └── ids[count]: uint32[]                 // compressed
@@ -439,3 +430,4 @@ void __thiscall FOM::Packets::Packet_ID_LOGIN_RETURN::Write(Packet_ID_LOGIN_RETU
   return;
 }
 ```
+

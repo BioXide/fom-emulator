@@ -1,10 +1,19 @@
-# Packet Index (Login / World)
+# Packet Docs README
 
-Standard format: every packet doc should include **Summary**, **On-wire encoding**, **Field Table**, **Read/Write (decomp)**, **IDA Anchors**, **Validation**, and **Notes**.
+All packet dumps **must** follow the exact format in:
+- `Docs/Packets/PACKET_TEMPLATE.md`
+
+Message ID references:
+- `Docs/Packets/RakMessageIds.md`
+- `Docs/Packets/LithMessageIds.md`
+
+---
+
+## Packet Index (Login / World)
 
 | ID | Name | Direction | Module | File | Notes |
 |---|---|---|---|---|---|
-| 0x04 | ID_CONNECTION_REQUEST | client -> server | RakNet (fom_client) | ID_CONNECTION_REQUEST.md | RakNet 3.611 offline handshake |
+| 0x04 | ID_CONNECTION_REQUEST | client -> server | RakNet (fom_client) | ID_CONNECTION_REQUEST.md | RakNet 3.61 offline handshake |
 | 0x0E | ID_CONNECTION_REQUEST_ACCEPTED | server -> client | RakNet (fom_client) | ID_CONNECTION_REQUEST_ACCEPTED.md | Parse path spotted in IDA disasm |
 | 0x10 | ID_NEW_INCOMING_CONNECTION | server -> client | RakNet (fom_client) | ID_NEW_INCOMING_CONNECTION.md | RakNet 3.611 online handshake |
 | 0x6C | ID_LOGIN_REQUEST | client -> master | fom_client | ID_LOGIN_REQUEST.md | Huffman + LT BitStream |
@@ -17,3 +26,5 @@ Standard format: every packet doc should include **Summary**, **On-wire encoding
 | 0x78 (msgId) | REGISTER_CLIENT | client -> world | Object.lto | ID_REGISTER_CLIENT.md | Precursor to 0x79 WORLD_LOGIN_DATA |
 | 0x7B | ID_WORLD_SELECT | server -> client | CShell | ID_WORLD_SELECT.md | SubId 4/7 set worldId/worldInst |
 | 0x79 (msgId) | WORLD_LOGIN_DATA | world -> client | Object.lto | ID_WORLD_LOGIN_DATA.md | RakNet/BitStream payload dispatched via game-message path (not CShell packet ID) |
+| 0xFE | ID_WORLD_QUERY | master -> world | server emulator | ID_WORLD_QUERY.md | World discovery query (token-gated) |
+| 0xFF | ID_WORLD_INFO | world -> master | server emulator | ID_WORLD_INFO.md | World discovery response (token echo + endpoint) |

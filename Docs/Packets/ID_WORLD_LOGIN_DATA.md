@@ -6,17 +6,6 @@
 - Transport: RakNet payload decoded by `VariableSizedPacket`/BitStream; dispatched by `CGameServerShell::OnMessage`.
 - Note: **not** the same as `ID_WORLD_LOGIN (0x72)` which is client -> master (CShell).
 
-## On-wire encoding (source of truth)
-```
-ID_WORLD_LOGIN_DATA (0x79)
-u8  msgId   = 0x79
-payload     = VariableSizedPacket + LT BitStream compressed fields (u8c/u16c/u32c)
-```
-Key points:
-- Uses LT BitStream compressed ints (u8c/u16c/u32c); StringBundleE/BlobH use LT Huffman reader (u32c bit-length + Huffman bits).
-- Some u32/u16 fields are byte-swapped on big-endian clients.
-- StringBundleE fields and BlobH are read via vtbl+56 (max 2048 bits each), with u32c bit-length + Huffman bitstream.
-
 ## Field Table
 | Offset | Field | Type | Encoding | Notes |
 |---|---|---|---|---|
@@ -359,3 +348,4 @@ Note: Offsets are struct offsets; read order follows `ID_WORLD_LOGIN_Read`.
   - `sharedMem_126515_block` (124B) is written by `sub_1005B120` (SharedMem key 126515); no downstream readers found in object.lto.
   - `sharedKey11224_block` (36B) is passed into `SharedStringTable_WriteKey11224`; no consumers beyond the shared-string write are known here.
   - `PlayerTableI` and `PlayerListK` are fully read/copied but show no clear post-login consumers in object.lto; likely UI/inventory metadata.
+

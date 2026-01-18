@@ -4,21 +4,13 @@
 - Direction: server -> client
 - Purpose: RakNet connection accept (promotes to CONNECTED)
 
-## On-wire encoding (source of truth)
-```
-ID_CONNECTION_REQUEST_ACCEPTED (0x0E)
-u8   msgId          = 0x0E
-SystemAddress externalId
-SystemIndex   systemIndex
-SystemAddress internalIds[]  (count = sizeof(mySystemAddress)/sizeof(SystemAddress))
-```
-
 ## Field Table
-| Field | Type | Encoding | Notes |
-|---|---|---|---|
-| externalId | SystemAddress | raw | Server-reported external addr |
-| systemIndex | SystemIndex | raw | |
-| internalIds | SystemAddress[] | raw | Array length from RakNet |
+| Offset | Field | Type | Encoding | Notes |
+|---|---|---|---|---|
+| 0x00 | msgId | u8 | raw | 0x0E |
+| 0x01 | externalId | SystemAddress | raw | Server-reported external addr |
+| 0x.. | systemIndex | SystemIndex | raw | |
+| 0x.. | internalIds | SystemAddress[] | raw | Array length from RakNet |
 
 ## Read/Write (decomp)
 - Write: RakNet 3.611 `SendConnectionRequestAccepted` (`Server\\packagers\\networking\\native\\raknet\\src\\RakPeer.cpp`)
@@ -35,3 +27,4 @@ SystemAddress internalIds[]  (count = sizeof(mySystemAddress)/sizeof(SystemAddre
 
 ## Notes / Edge Cases
 - Client connectMode flips to CONNECTED after acceptance.
+

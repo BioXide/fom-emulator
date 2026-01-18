@@ -38,6 +38,14 @@ switch (subId):
   case 3 -> u32c + u8c + u8c (unknown purpose)
   case 4 -> u8c worldId + u8c worldInst (sets world + triggers login)
   case 5 -> (no extra data)
+
+## Field Table
+| Offset | Field | Type | Encoding | Notes |
+|---|---|---|---|---|
+| 0x00 | msgId | u8 | raw | 0x7B |
+| 0x01 | playerId | u32 | compressed | Must match `g_pPlayerStats[0x5B]` |
+| 0x.. | subId | u8 | compressed | 2,3,4,5,6,7 |
+| 0x.. | subPayload | block | varies | See switch cases above |
   case 6 -> SubId6List payload (faction/world data for UI)
   case 7 -> u8c worldId + u8c worldInst
   default -> (no extra data, returns ok=1)

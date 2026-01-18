@@ -4,19 +4,12 @@
 - Direction: server -> client
 - Purpose: RakNet notify of new incoming connection
 
-## On-wire encoding (source of truth)
-```
-ID_NEW_INCOMING_CONNECTION (0x10)
-u8   msgId          = 0x10
-SystemAddress systemAddress
-SystemAddress internalIds[]  (count = sizeof(mySystemAddress)/sizeof(SystemAddress))
-```
-
 ## Field Table
-| Field | Type | Encoding | Notes |
-|---|---|---|---|
-| systemAddress | SystemAddress | raw | Remote system |
-| internalIds | SystemAddress[] | raw | Array length from RakNet |
+| Offset | Field | Type | Encoding | Notes |
+|---|---|---|---|---|
+| 0x00 | msgId | u8 | raw | 0x10 |
+| 0x01 | systemAddress | SystemAddress | raw | Remote system |
+| 0x.. | internalIds | SystemAddress[] | raw | Array length from RakNet |
 
 ## Read/Write (decomp)
 - Write: RakNet 3.611 `outBitStream.Write((MessageID)ID_NEW_INCOMING_CONNECTION)` send path
@@ -33,3 +26,4 @@ SystemAddress internalIds[]  (count = sizeof(mySystemAddress)/sizeof(SystemAddre
 
 ## Notes / Edge Cases
 - ConnectMode transitions to CONNECTED on receipt.
+

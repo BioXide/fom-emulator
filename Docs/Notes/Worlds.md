@@ -1,36 +1,46 @@
 # World Tables
 
-Source: `Server/apps/master/src/world/WorldRegistry.ts`
+## Client world table (authoritative, index-based)
+Source: client g_WorldTable dump (CShell.dll). WORLD_ID is treated as 1-based index.
 
-## WORLD_TABLE
+| id | class | default folder | default display | loads as | valid | notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0 | NY_Manhattan | NYC - Manhattan | NY_Manhattan | yes | |
+| 2 | 1 | NY_Brooklyn | NYC - Brooklyn | NY_Brooklyn | yes | |
+| 3 | 0 | tokyo | Tokyo - Upper | tokyo | yes | |
+| 4 | 0 | apartments | Apartments | apartments | yes | |
+| 5 | 5 | null | Earth | null | no | folder null (missing world) |
+| 6 | 2 | necarsfield | Necars Field | necarsfield | yes | |
+| 7 | 0 | Paris | Paris | Paris | yes | |
+| 8 | 2 | testing | Testing | null | no | no world (testing entry) |
+| 9 | 2 | Berlin | Berlin | Berlin | yes | |
+| 10 | 5 | lowertokyo | Tokyo - Lower | lowertokyo | yes | |
+| 11 | 4 | AndromedaCity | Andromeda City | AndromedaCity | yes | |
+| 12 | 0 | Newhaven | New Haven | Newhaven | yes | |
+| 13 | 4 | ganymede | Ganymede | null | no | no world (ganymede entry) |
+| 14 | 0 | DeMorgan | DeMorgans Castle | DeMorgan | yes | |
+| 15 | 3 | keplersdome | Keplers Dome | keplersdome | yes | |
+| 16 | 0 | Moonbase | Moon Base | Moonbase | yes | |
+| 17 | 1 | Genesis | STS Genesis | null | no | no world (Genesis entry / space station missing) |
+| 18 | 3 | NY_GroundZero | NYC - Ground Zero | NY_GroundZero | yes | |
+| 19 | 0 | BookersValley | Bookers Valley | BookersValley | yes | |
+| 20 | 3 | epsiloneridani | Epsilon Eridani | null | no | no world (epsiloneridani entry) |
+| 21 | 0 | TerraVentureI | Terra Venture I | TerraVentureI | yes | |
+| 22 | 0 | DominionExodus | Dominion Exodus | null | no | no world (DominionExodus entry) |
+| 23 | 4 | EspenParadise | Espen Paradise | null | no | no world (EspenParadise entry) |
+| 24 | 5 | Aquatica | Aquatica | Aquatica | yes | |
+| 25 | 3 | Pegasi51 | Pegasi 51 | Pegasi51 | yes | |
+| 26 | 0 | Aurelia | Aurelia | Aurelia | yes | |
+| 27 | 0 | PaxPrime | Pax Prime | PaxPrime | yes | |
+| 28 | 3 | ceresdelta | Ceres Delta | ceresdelta | yes | |
+| 29 | 0 | titanstation | Titan Station | titanstation | yes | |
+| 30 | 0 | CloneFac | Cloning Facility | CloneFac | yes | |
+| 31 | 0 | TrainingCenter | Training Center | TrainingCenter | yes | |
+| 32 | 4 | null | null | null | no | empty slot |
 
-| id | folder | display |
-| --- | --- | --- |
-| 1 | NY_Manhattan | NYC-Manhattan |
-| 2 | NY_Brooklyn | NYC-Brooklyn |
-| 3 | tokyo | Tokyo - Upper |
-| 4 | apartments | Apartments |
-| 5 | (missing) | Earth |
-| 6 | necarsfield | Necarsfield |
-| 7 | Paris | Paris |
-| 8 | Aquatica | Aquatica |
-| 9 | Berlin | Berlin |
-| 10 | lowertokyo | Tokyo - Lower |
-| 11 | AndromedaCity | Andromeda City |
-| 12 | Newhaven | Newhaven |
-| 13 | Aurelia | Aurelia |
-| 14 | DeMorgan | De Morgan |
-| 15 | CloneFac | Clone Facility |
-| 16 | MoonBase | Moonbase |
-| 17 | Pegasi51 | Pegasi 51 |
-| 18 | NY_GroundZero | NYC-Ground Zero |
-| 19 | BookersValley | Bookers Valley |
-| 20 | titanstation | Titan Station |
-| 21 | TerraVentureI | Terra Venture I |
-| 22 | (missing) | Dominion Exodus (missing) |
-| 23 | (missing) | Espen Paradise (missing) |
-
-Remaining missing IDs: 22 (Dominion Exodus), 23 (Espen Paradise)
+Notes:
+- Class values are raw table values (0–5). Mapping to UI strings (CLASS I–V WORLD) is not yet validated.
+- `default folder/display` are the strings stored in the client table; `loads as` is based on manual travel tests.
 
 ## APARTMENT_WORLD_TABLE
 

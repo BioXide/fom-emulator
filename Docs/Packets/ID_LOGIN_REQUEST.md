@@ -4,18 +4,6 @@
 - Direction: client -> master
 - Purpose: initial login request (username + clientVersion)
 
-## On-wire encoding (source of truth)
-```
-ID_LOGIN_REQUEST (0x6C)
-u8   msgId            = 0x6C
-u32  huffmanBitCount  = BitStream_WriteCompressed_U32 (byte-array compressed)
-bits huffmanBits      = Huffman(username), bit-aligned, length = bitCount
-u16  clientVersion    = BitStream_WriteCompressed_U16
-```
-Key points:
-- This path uses the FoM/LithTech Huffman compressor, not RakNet StringCompressor.
-- The huffman bitCount is written via the LT BitStream byte-array compression path.
-
 ## Field Table
 | Offset | Field | Type | Encoding | Notes |
 |---|---|---|---|---|
@@ -38,3 +26,4 @@ Key points:
 
 ## Notes / Edge Cases
 - Strings decode into fixed buffers; clamp to `maxLen-1` before encode.
+
